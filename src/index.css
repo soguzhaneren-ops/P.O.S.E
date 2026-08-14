@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* Basic React-Grid-Layout spacing rules */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(0, 210, 255, 0.05) !important;
+  border: 1px dashed rgba(0, 210, 255, 0.4) !important;
+  border-radius: 4px !important;
+  z-index: 1;
+}
+
+/* Custom Tactical Cyber resize handle styling */
+.react-resizable-handle {
+  position: absolute;
+  width: 12px !important;
+  height: 12px !important;
+  bottom: 4px !important;
+  right: 4px !important;
+  border-right: 2px solid rgba(0, 210, 255, 0.5) !important;
+  border-bottom: 2px solid rgba(0, 210, 255, 0.5) !important;
+  cursor: se-resize;
+}
+
+.react-resizable-handle:hover {
+  border-color: rgba(0, 210, 255, 0.9) !important;
+}
+
+/* Global High-Tech Scrollbar Theme Overrides */
+::-webkit-scrollbar {
+  width: 4px !important; 
+  height: 4px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: #090e14 !important; 
+  border-left: 1px solid rgba(28, 53, 71, 0.3) !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 210, 255, 0.25) !important; 
+  border-radius: 99px !important;
+  border: 1px solid rgba(0, 210, 255, 0.1) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 210, 255, 0.6) !important; 
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.4) !important;
+}
