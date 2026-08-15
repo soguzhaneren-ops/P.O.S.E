@@ -1,7 +1,7 @@
 import * as math from 'mathjs'
 import React, { useState, useEffect, useRef } from 'react'
 import { WidthProvider, Responsive as ResponsiveGridLayout } from 'react-grid-layout/legacy'
-
+import WidgetShell from './components/WidgetShell'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { getCurrentWindow } from '@tauri-apps/api/window' 
@@ -2473,48 +2473,21 @@ function App() {
             setPreviewDockingId(null)
           }}
         >
-          {/* 1. WEATHER MONITOR */}
           {!dockedWidgets.includes('weather') && (
-            <div 
-              key="weather" 
-              ref={weatherRef} 
-              className="bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden"
-            >
-              {previewDockingId === 'weather' ? (
-                renderFolderPreview('WEATHER_MONITOR // NAV_V.02')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('weather')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${weather.loading ? 'bg-amber-500 animate-pulse' : 'bg-[#00d2ff]'}`}></span>
-                      <span>WEATHER MONITOR // NAV_V.02</span>
-                    </div>
-                    <div className="flex gap-1 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('weather') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('weather') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                        title="ENGAGE FOCUS MATRIX"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('weather')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="weather"
+            id="weather"
+            title="WEATHER MONITOR // NAV_V.02"
+            loading={weather.loading}
+            isPreview={previewDockingId === 'weather'}
+            previewLabel={renderFolderPreview('WEATHER_MONITOR // NAV_V.02')}
+            onDock={() => handleDockWidget('weather')}
+            onFocus={() => setFocalWidgetId('weather')}
+            onDoubleClickHeader={() => setFocalWidgetId('weather')}
+          >
+            {renderSubsystemInnerContent('weather')}
+          </WidgetShell>
+        )}
 
           {/* 2. MARKET DATA & PORTFOLIO TRACKER */}
           {!dockedWidgets.includes('market') && (
