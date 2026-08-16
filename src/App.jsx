@@ -2491,85 +2491,38 @@ function App() {
 
           {/* 2. MARKET DATA & PORTFOLIO TRACKER */}
           {!dockedWidgets.includes('market') && (
-            <div 
-              key="market" 
-              className="bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden"
-            >
-              {previewDockingId === 'market' ? (
-                renderFolderPreview('FINANCIAL_FEED // MARKET')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('market')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${marketLoading ? 'bg-amber-500 animate-pulse' : 'bg-[#00d2ff]'}`}></span>
-                      <span>FINANCIAL_FEED // SUBNETS_V.02</span>
-                    </div>
-                    <div className="flex gap-2 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('market') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('market') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('market')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="market"
+            id="market"
+            title="FINANCIAL_FEED // SUBNETS_V.02"
+            loading={marketLoading}
+            isPreview={previewDockingId === 'market'}
+            previewLabel={renderFolderPreview('FINANCIAL_FEED // MARKET')}
+            onDock={() => handleDockWidget('market')}
+            onFocus={() => setFocalWidgetId('market')}
+            onDoubleClickHeader={() => setFocalWidgetId('market')}
+          >
+            {renderSubsystemInnerContent('market')}
+          </WidgetShell>
+        )}
 
           {/* 3. CORE CONTROL SYSTEM */}
           {!dockedWidgets.includes('main') && (
-            <div 
-              key="main" 
-              className="bg-[#0c1821]/40 rounded border border-[#1c3547] flex flex-col overflow-hidden"
-            >
-              {previewDockingId === 'main' ? (
-                renderFolderPreview('CORE_CONTROL // MAIN_UNIT')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('main')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 bg-[#00d2ff]"></span>
-                      <span>CORE_CONTROL_SYSTEM // MAIN_UNIT</span>
-                    </div>
-                    <div className="flex gap-2 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('main') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('main') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('main')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="main"
+            id="main"
+            bg="bg-[#0c1821]/40"
+            title="CORE_CONTROL_SYSTEM // MAIN_UNIT"
+            loading={false}
+            isPreview={previewDockingId === 'main'}
+            previewLabel={renderFolderPreview('CORE_CONTROL // MAIN_UNIT')}
+            onDock={() => handleDockWidget('main')}
+            onFocus={() => setFocalWidgetId('main')}
+            onDoubleClickHeader={() => setFocalWidgetId('main')}
+          >
+            {renderSubsystemInnerContent('main')}
+          </WidgetShell>
+        )}
 
           {/* 4. NEWS MATRIX */}
           {!dockedWidgets.includes('news') && (

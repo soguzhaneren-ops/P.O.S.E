@@ -5,6 +5,7 @@ function WidgetShell({
   id,
   title,
   loading,
+  bg = 'bg-[#0c1821]',
   isPreview,
   previewLabel,
   onDock,
@@ -18,7 +19,7 @@ function WidgetShell({
   return (
     <div
       style={style}
-      className={`bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden ${className}`}
+      className={`${bg} rounded border border-[#1c3547] flex flex-col overflow-hidden ${className}`}
       {...rest}
     >
       {isPreview ? (
