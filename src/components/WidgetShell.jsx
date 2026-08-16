@@ -6,6 +6,8 @@ function WidgetShell({
   title,
   loading,
   bg = 'bg-[#0c1821]',
+  dotColor,
+  dotPulse = false,
   isPreview,
   previewLabel,
   onDock,
@@ -32,7 +34,11 @@ function WidgetShell({
             title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
           >
             <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-500 animate-pulse' : 'bg-[#00d2ff]'}`}></span>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+                loading
+                  ? 'bg-amber-500 animate-pulse'
+                  : `${dotColor || 'bg-[#00d2ff]'} ${dotPulse ? 'animate-pulse' : ''}`
+              }`}></span>              
               <span>{title}</span>
             </div>
             <div className="flex gap-1 text-[clamp(8px,2.2cqh,11px)]">

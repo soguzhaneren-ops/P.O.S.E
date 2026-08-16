@@ -545,16 +545,16 @@ function App() {
     const baseParams = `?autoplay=1`
     const playlistMatch = url.match(/[&?]list=([^&]+)/)
     if (playlistMatch) {
-      return `https://www.youtube.com/embed/videoseries?list=${playlistMatch[1]}&autoplay=1`
+      return `https://www.youtube-nocookie.com/embed/videoseries?list=${playlistMatch[1]}&autoplay=1`
     }
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/
     const match = url.match(regExp)
     if (match && match[2].length === 11) {
-      return `https://www.youtube.com/embed/${match[2]}${baseParams}`
+      return `https://www.youtube-nocookie.com/embed/${match[2]}${baseParams}`
     }
     const trimmed = url.trim()
     if (trimmed.length === 11) {
-      return `https://www.youtube.com/embed/${trimmed}${baseParams}`
+      return `https://www.youtube-nocookie.com/embed/${trimmed}${baseParams}`
     }
     return ''
   }
@@ -2526,167 +2526,78 @@ function App() {
 
           {/* 4. NEWS MATRIX */}
           {!dockedWidgets.includes('news') && (
-            <div 
-              key="news" 
-              className="bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden"
-            >
-              {previewDockingId === 'news' ? (
-                renderFolderPreview('NEWS_MATRIX // RSS')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('news')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <span className={`w-1.5 h-1.5 rounded-full ${news.loading ? 'bg-amber-500 animate-pulse' : 'bg-[#00d2ff]'}`}></span>
-                      <span>NEWS MATRIX // ROUTER_V.01</span>
-                    </div>
-                    <div className="flex gap-2 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('news') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('news') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('news')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="news"
+            id="news"
+            title="NEWS MATRIX // ROUTER_V.01"
+            loading={news.loading}
+            isPreview={previewDockingId === 'news'}
+            previewLabel={renderFolderPreview('NEWS_MATRIX // RSS')}
+            onDock={() => handleDockWidget('news')}
+            onFocus={() => setFocalWidgetId('news')}
+            onDoubleClickHeader={() => setFocalWidgetId('news')}
+          >
+            {renderSubsystemInnerContent('news')}
+          </WidgetShell>
+        )}
 
           {/* 5. YOUTUBE MEDIA TERMINAL */}
           {!dockedWidgets.includes('social') && (
-            <div 
-              key="social" 
-              className="bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden"
-            >
-              {previewDockingId === 'social' ? (
-                renderFolderPreview('MEDIA_TERMINAL // YOUTUBE')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('social')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse"></span>
-                      <span>YOUTUBE_MEDIA_TERMINAL // NODE_05</span>
-                    </div>
-                    <div className="flex gap-2 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('social') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('social') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('social')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="social"
+            id="social"
+            title="YOUTUBE_MEDIA_TERMINAL // NODE_05"
+            loading={false}
+            dotColor="bg-rose-600"
+            dotPulse={true}
+            isPreview={previewDockingId === 'social'}
+            previewLabel={renderFolderPreview('MEDIA_TERMINAL // YOUTUBE')}
+            onDock={() => handleDockWidget('social')}
+            onFocus={() => setFocalWidgetId('social')}
+            onDoubleClickHeader={() => setFocalWidgetId('social')}
+          >
+            {renderSubsystemInnerContent('social')}
+          </WidgetShell>
+        )}
           
           {/* 6. OPERATIONAL LOG (TO-DO LIST) */}
           {!dockedWidgets.includes('todo') && (
-            <div 
-              key="todo" 
-              className="bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden select-none"
-            >
-              {previewDockingId === 'todo' ? (
-                renderFolderPreview('OPERATIONAL_LOG // TO_DO')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('todo')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                      <span>OPERATIONAL_LOG // TO_DO</span>
-                    </div>
-                    <div className="flex gap-2 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('todo') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('todo') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('todo')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="todo"
+            id="todo"
+            title="OPERATIONAL_LOG // TO_DO"
+            loading={false}
+            dotColor="bg-amber-500"
+            dotPulse={true}
+            className="select-none"
+            isPreview={previewDockingId === 'todo'}
+            previewLabel={renderFolderPreview('OPERATIONAL_LOG // TO_DO')}
+            onDock={() => handleDockWidget('todo')}
+            onFocus={() => setFocalWidgetId('todo')}
+            onDoubleClickHeader={() => setFocalWidgetId('todo')}
+          >
+            {renderSubsystemInnerContent('todo')}
+          </WidgetShell>
+        )}
 
           {/* 7. ANALYTICAL MATH LAB */}
           {!dockedWidgets.includes('calculator') && (
-            <div 
-              key="calculator" 
-              className="bg-[#0c1821] rounded border border-[#1c3547] flex flex-col overflow-hidden"
-            >
-              {previewDockingId === 'calculator' ? (
-                renderFolderPreview('ANALYTICAL_LAB // MATH_GRAPH')
-              ) : (
-                <>
-                  {/* Restrict Double-Click-to-Focus strictly to the top header bar container [3] */}
-                  <div 
-                    onDoubleClick={() => setFocalWidgetId('calculator')}
-                    className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
-                    title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
-                      <span>ANALYTICAL_MATH_LAB // V_01</span>
-                    </div>
-                    <div className="flex gap-2 text-[clamp(8px,2.2cqh,11px)]">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDockWidget('calculator') }} 
-                        className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤳ DOCK ]
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setFocalWidgetId('calculator') }} 
-                        className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
-                      >
-                        [ ⤖ FOCUS ]
-                      </button>
-                    </div>
-                  </div>
-                  {renderSubsystemInnerContent('calculator')}
-                </>
-              )}
-            </div>
-          )}
+          <WidgetShell
+            key="calculator"
+            id="calculator"
+            title="ANALYTICAL_MATH_LAB // V_01"
+            loading={false}
+            dotColor="bg-cyan-500"
+            dotPulse={true}
+            isPreview={previewDockingId === 'calculator'}
+            previewLabel={renderFolderPreview('ANALYTICAL_LAB // MATH_GRAPH')}
+            onDock={() => handleDockWidget('calculator')}
+            onFocus={() => setFocalWidgetId('calculator')}
+            onDoubleClickHeader={() => setFocalWidgetId('calculator')}
+          >
+            {renderSubsystemInnerContent('calculator')}
+          </WidgetShell>
+        )}
         </ResponsiveReactGridLayout>
       </div>
 
