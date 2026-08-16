@@ -1514,8 +1514,7 @@ function App() {
                 </div>
 
                 <div className="border-t border-cyan-500/10"></div>
-                <div className="space-y-1.5 flex-grow overflow-auto">
-                  <div className="text-xs text-[#60809a] flex justify-between font-bold px-1 select-none mb-1">
+                <div ref={weatherRef} className="space-y-1.5 flex-grow overflow-auto">                  <div className="text-xs text-[#60809a] flex justify-between font-bold px-1 select-none mb-1">
                     <span>DAY</span>
                     <span>HI / LO</span>
                     <span>COND</span>

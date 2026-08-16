@@ -1,25 +1,29 @@
 import React from 'react'
 import WidgetErrorBoundary from './WidgetErrorBoundary'
 
-function WidgetShell({
-  id,
-  title,
-  loading,
-  bg = 'bg-[#0c1821]',
-  dotColor,
-  dotPulse = false,
-  isPreview,
-  previewLabel,
-  onDock,
-  onFocus,
-  onDoubleClickHeader,
-  children,
-  className = '',
-  style,
-  ...rest
-}) {
+const WidgetShell = React.forwardRef(function WidgetShell(
+  {
+    id,
+    title,
+    loading,
+    bg = 'bg-[#0c1821]',
+    dotColor,
+    dotPulse = false,
+    isPreview,
+    previewLabel,
+    onDock,
+    onFocus,
+    onDoubleClickHeader,
+    children,
+    className = '',
+    style,
+    ...rest
+  },
+  ref
+) {
   return (
     <div
+      ref={ref}
       style={style}
       className={`${bg} rounded border border-[#1c3547] flex flex-col overflow-hidden ${className}`}
       {...rest}
@@ -64,6 +68,6 @@ function WidgetShell({
       )}
     </div>
   )
-}
+})
 
 export default WidgetShell
