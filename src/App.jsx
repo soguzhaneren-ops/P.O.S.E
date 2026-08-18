@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { WidthProvider, Responsive as ResponsiveGridLayout } from 'react-grid-layout/legacy'
 import WidgetShell from './components/WidgetShell'
 import WeatherWidget from './widgets/WeatherWidget'
+import TodoWidget from './widgets/TodoWidget'
+import CalculatorWidget from './widgets/CalculatorWidget'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { getCurrentWindow } from '@tauri-apps/api/window' 
@@ -42,7 +44,6 @@ function App() {
     const isFs = await win.isFullscreen()
     await win.setFullscreen(!isFs)
   }
-  const [weatherLoading, setWeatherLoading] = useState(true)
   const [graphScale, setGraphScale] = useState(32)
   
   // Starred market symbols
@@ -133,21 +134,6 @@ function App() {
   const [animateMarket, setAnimateMarket] = useState(true)
   const [lastManualMarketClick, setLastManualMarketClick] = useState(() => Date.now())
 
-  // Dynamic To-Do List state (Supports sorting and double-click edits)
-  const [todos, setTodos] = useState(() => {
-    const saved = localStorage.getItem('dashboardTodos')
-    const parsed = saved ? JSON.parse(saved) : [
-      { id: 1, text: 'SYS_BOOT: VERIFY PORTFOLIO INTEGRITY', completed: true, subTasks: [] },
-      { id: 2, text: 'UPGRADE: SECURE TELEMETRY NODES', completed: false, subTasks: [
-        { id: 21, text: 'VERIFY FINNHUB HANDSHAKE', completed: false },
-        { id: 22, text: 'OPTIMIZE COMPILER CHANNELS', completed: true }
-      ]}
-    ]
-    return parsed
-  })
-  const [newTodo, setNewTodo] = useState('')
-  const [expandedTodos, setExpandedTodos] = useState([])
-  const [subTaskInputs, setSubTaskInputs] = useState({})
 
   // States for To-Do drag-and-drop sorting & inline editing
   const [draggedTodoId, setDraggedTodoId] = useState(null)
@@ -193,13 +179,6 @@ function App() {
         handleCloseFocal() // Triggers smooth zoom-out exit transition
       }
 
-      if (isEditingInput) return
-
-      if (e.key.toLowerCase() === 'o') {
-        setGraphScale(prev => Math.min(128, prev * 1.25))
-      } else if (e.key.toLowerCase() === 'p') {
-        setGraphScale(prev => Math.max(8, prev / 1.25))
-      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -233,242 +212,9 @@ function App() {
   const [tempDefaultYtUrl, setTempDefaultYtUrl] = useState(defaultYtUrl)
   const [showDftConfig, setShowDftConfig] = useState(false)
 
-  // Math Formatting regex parser
-  const formatMathToJSX = (expr) => {
-    if (!expr) return ''
-    let html = expr.replace(/\*/g, '') 
-    html = html.replace(/([0-9a-zA-Z\s()]+)\/([0-9a-zA-Z\s()]+)/g, 
-      '<span class="inline-flex flex-col justify-center items-center align-middle text-center leading-none text-[0.5rem] ml-0.5 mr-0.5"><span class="border-b border-current pb-[2px] pl-0.5 pr-0.5">$1</span><span class="pt-[2px] pl-0.5 pr-0.5">$2</span></span>'
-    )
-    html = html
-      .replace(/\^([0-9a-zA-Z/+-]+)/g, '<sup class="font-bold text-[0.5rem]">$1</sup>')
-      .replace(/\^\(([^)]+)\)/g, '<sup class="font-bold text-[0.5rem]">$1</sup>')
-      .replace(/log\(/g, '<span class="font-sans font-normal opacity-85">log</span>(')
-      .replace(/ln\(/g, '<span class="font-sans font-normal opacity-85">ln</span>(')
-      .replace(/sin\(/g, '<span class="font-sans font-normal opacity-85">sin</span>(')
-      .replace(/cos\(/g, '<span class="font-sans font-normal opacity-85">cos</span>(')
-      .replace(/sqrt\(/g, '<span class="font-sans font-normal opacity-85">√</span>(')
 
-    html = html.replace(/(?<![a-zA-Z])(x|y)(?![a-zA-Z])/g, '<i class="font-serif italic font-normal">$1</i>')
-    return <span dangerouslySetInnerHTML={{ __html: html }} className="font-sans tracking-wide" />
-  }
   
-  // 2D graphing system state
-  const [equations, setEquations] = useState(() => {
-    const saved = localStorage.getItem('dashboardCalcEqs')
-    return saved ? JSON.parse(saved) : ['x^2 + y^2 = 9', 'y = log(x)']
-  })
-  const [newEqInput, setNewEqInput] = useState('')
-  const canvasRef = useRef(null)
-
-  const [graphCenter, setGraphCenter] = useState({ x: 0, y: 0 })
-  const [isDragging, setIsDragging] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-
-  const [searchPointInput, setSearchPointInput] = useState('')
-  const [searchedPoints, setSearchedPoints] = useState([])
-  const [showExtremaFinder, setShowExtremaFinder] = useState(false)
-  const [extremaEq, setExtremaEq] = useState('')
-  const [domainMin, setDomainMin] = useState('')
-  const [domainMax, setDomainMax] = useState('')
-  const [extremaType, setExtremaType] = useState('MAX')
-  const [resolvedExtrema, setResolvedExtrema] = useState(null)
-
-  const [editingIndex, setEditingIndex] = useState(null)
-  const [editingValue, setEditingValue] = useState('')
-
-  // Sync graphing equations to storage
-  useEffect(() => {
-    localStorage.setItem('dashboardCalcEqs', JSON.stringify(equations))
-  }, [equations])
-
-  // Drag-to-pan handlers
-  const handleCanvasMouseDown = (e) => {
-    setIsDragging(true)
-    setDragStart({ x: e.clientX, y: e.clientY })
-  }
-
-  const handleCanvasMouseMove = (e) => {
-    if (!isDragging) return
-    const dx = e.clientX - dragStart.x
-    const dy = e.clientY - dragStart.y
-    setGraphCenter(prev => ({
-      x: prev.x - dx / graphScale,
-      y: prev.y + dy / graphScale
-    }))
-    setDragStart({ x: e.clientX, y: e.clientY })
-  }
-
-  const handleCanvasMouseUp = () => {
-    setIsDragging(false)
-  }
-
-  const compileEquationToFn = (eqStr) => {
-    let normalized = eqStr
-      .replace(/√\s*\(([^)]+)\)/g, 'sqrt($1)')
-      .replace(/√\s*([a-zA-Z0-9.]+)/g, 'sqrt($1)')
-      .replace(/\bln\(/g, 'log(')
-      .replace(/\^1\/2/g, '^0.5')
-      .replace(/\^\(1\/2\)/g, '^0.5')
-
-    let leftSide = normalized
-    let rightSide = '0'
-
-    if (normalized.includes('=')) {
-      const parts = normalized.split('=')
-      leftSide = parts[0].trim()
-      rightSide = parts[1].trim()
-    } else {
-      if (!normalized.includes('y')) {
-        leftSide = 'y'
-        rightSide = `(${normalized})`
-      }
-    }
-    return math.compile(`(${leftSide}) - (${rightSide})`)
-  }
-
-  const handleAddEquation = () => {
-    const clean = newEqInput.trim().toLowerCase()
-    if (!clean) return
-    try {
-      compileEquationToFn(clean)
-      setEquations(prev => [...prev, clean])
-      setNewEqInput('')
-    } catch {
-      alert('SYNTAX_ERROR: Unable to parse equation structure.')
-    }
-  }
-
-  const handleRemoveEquation = (indexToRemove) => {
-    setEquations(prev => prev.filter((_, idx) => idx !== indexToRemove))
-  }
   
-  const handleSearchPoint = () => {
-    let query = searchPointInput.trim().toLowerCase()
-    if (!query) return
-
-    query = query
-      .replace(/√\s*\(([^)]+)\)/g, 'sqrt($1)')
-      .replace(/√\s*([a-zA-Z0-9.]+)/g, 'sqrt($1)')
-      .replace(/\bln\(/g, 'log(')
-      .replace(/\^1\/2/g, '^0.5')
-      .replace(/\^\(1\/2\)/g, '^0.5')
-
-    if (query.startsWith('x=')) {
-      const rightSide = query.split('=')[1].trim()
-      try {
-        const val = parseFloat(math.evaluate(rightSide))
-        if (isNaN(val) || !isFinite(val)) throw new Error()
-        setSearchedPoints(prev => [...prev, { type: 'x-line', val }])
-        setSearchPointInput('')
-        return
-      } catch {
-        alert('FORMAT_ERROR: Unable to evaluate x-value expression.')
-        return
-      }
-    }
-
-    const pointMatch = query.match(/^\(?\s*([^,]+)\s*,\s*([^,)]+)\s*\)?$/)
-    if (pointMatch) {
-      try {
-        const px = parseFloat(math.evaluate(pointMatch[1].trim()))
-        const py = parseFloat(math.evaluate(pointMatch[2].trim()))
-        if (isNaN(px) || !isFinite(px) || isNaN(py) || !isFinite(py)) throw new Error()
-        setSearchedPoints(prev => [...prev, { type: 'point', x: px, y: py }])
-        setSearchPointInput('')
-        return
-      } catch {
-        alert('FORMAT_ERROR: Unable to evaluate coordinate expressions.')
-        return
-      }
-    }
-    alert('FORMAT_ERROR: Use "x = 1/2" or "(3, -√2)"')
-  }
-
-  const handleClearPoints = () => {
-    setSearchedPoints([])
-  }
-
-  const handleStartEdit = (index, value) => {
-    setEditingIndex(index)
-    setEditingValue(value)
-  }
-
-  const handleSaveEdit = (index) => {
-    const clean = editingValue.trim().toLowerCase()
-    if (!clean) {
-      setEditingIndex(null)
-      return
-    }
-    try {
-      compileEquationToFn(clean)
-      setEquations(prev => {
-        const copy = [...prev]
-        copy[index] = clean
-        return copy
-      })
-      setEditingIndex(null)
-    } catch {
-      alert('SYNTAX_ERROR: Unable to parse edited equation.')
-    }
-  }
-
-  const handleResolveExtrema = () => {
-    if (!extremaEq) return
-    const xMin = parseFloat(domainMin)
-    const xMax = parseFloat(domainMax)
-
-    if (isNaN(xMin) || isNaN(xMax) || xMin >= xMax) {
-      alert('FORMAT_ERROR: Enter valid domain boundaries where x_min < x_max.')
-      return
-    }
-
-    try {
-      let normalized = extremaEq
-        .replace(/√\s*\(([^)]+)\)/g, 'sqrt($1)')
-        .replace(/√\s*([a-zA-Z0-9.]+)/g, 'sqrt($1)')
-        .replace(/\bln\(/g, 'log(')
-        .replace(/\^1\/2/g, '^0.5')
-        .replace(/\^\(1\/2\)/g, '^0.5')
-
-      let rightSide = normalized
-      if (normalized.includes('=')) {
-        rightSide = normalized.split('=')[1].trim()
-      }
-      const compRight = math.compile(rightSide)
-      
-      const steps = 1000
-      const step = (xMax - xMin) / steps
-      
-      let optX = xMin
-      let optY = compRight.evaluate({ x: xMin })
-
-      for (let i = 1; i <= steps; i++) {
-        const currentX = xMin + i * step
-        const currentY = compRight.evaluate({ x: currentX })
-        if (isNaN(currentY) || !isFinite(currentY)) continue
-        if (extremaType === 'MAX') {
-          if (currentY > optY) {
-            optY = currentY
-            optX = currentX
-          }
-        } else {
-          if (currentY < optY) {
-            optY = currentY
-            optX = currentX
-          }
-        }
-      }
-
-      setResolvedExtrema({
-        x: optX,
-        y: optY,
-        type: extremaType
-      })
-    } catch {
-      alert('SOLVE_ERROR: Unable to evaluate mathematical function across domain.')
-    }
-  }
 
   // Persists standard configurations
   useEffect(() => {
@@ -499,9 +245,6 @@ function App() {
     localStorage.setItem('dashboardHoldings', JSON.stringify(holdings))
   }, [holdings])
 
-  useEffect(() => {
-    localStorage.setItem('dashboardTodos', JSON.stringify(todos))
-  }, [todos])
 
   useEffect(() => {
     localStorage.setItem('dashboardTempText', tempText)
@@ -862,110 +605,6 @@ function App() {
   setHoldings(prev => prev.filter(h => h.symbol !== sym))
 }
 
-  // To-Do list operations [1]
-  const handleAddTodo = () => {
-    const cleanText = newTodo.trim().toUpperCase()
-    if (!cleanText) return
-    setTodos(prev => [...prev, { id: Date.now(), text: cleanText, completed: false, subTasks: [] }])
-    setNewTodo('')
-  }
-
-  const handleToggleTodo = (id) => {
-    setTodos(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
-  }
-
-  const handleRemoveTodo = (id) => {
-    setTodos(prev => prev.filter(t => t.id !== id))
-    setExpandedTodos(prev => prev.filter(item => item !== id))
-  }
-
-  const handleToggleExpand = (id) => {
-    setExpandedTodos(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    )
-  }
-
-  const handleSubInputChange = (todoId, val) => {
-    setSubTaskInputs(prev => ({ ...prev, [todoId]: val }))
-  }
-
-  const handleAddSubTask = (todoId) => {
-    const text = (subTaskInputs[todoId] || '').trim().toUpperCase()
-    if (!text) return
-    setTodos(prev => prev.map(t => {
-      if (t.id === todoId) {
-        const subs = t.subTasks || []
-        return { ...t, subTasks: [...subs, { id: Date.now(), text, completed: false }] }
-      }
-      return t
-    }))
-    setSubTaskInputs(prev => ({ ...prev, [todoId]: '' }))
-  }
-
-  const handleToggleSubTask = (todoId, subId) => {
-    setTodos(prev => prev.map(t => {
-      if (t.id === todoId) {
-        const updatedSubs = (t.subTasks || []).map(s => 
-          s.id === subId ? { ...s, completed: !s.completed } : s
-        )
-        return { ...t, subTasks: updatedSubs }
-      }
-      return t
-    }))
-  }
-
-  const handleRemoveSubTask = (todoId, subId) => {
-    setTodos(prev => prev.map(t => {
-      if (t.id === todoId) {
-        const updatedSubs = (t.subTasks || []).filter(s => s.id !== subId)
-        return { ...t, subTasks: updatedSubs }
-      }
-      return t
-    }))
-  }
-
-  // Draggable To-Do rows (Isolated to prevent bubbling up to RGL viewport container)
-  const handleDragStart = (e, id) => {
-    e.stopPropagation(); // Stops parent grid layout triggers [1]
-    setDraggedTodoId(id);
-    e.dataTransfer.effectAllowed = 'move';
-  }
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // Stops parent grid layout triggers [1]
-  }
-
-  const handleDrop = (e, targetId) => {
-    e.preventDefault();
-    e.stopPropagation(); // Stops parent grid layout triggers [1]
-    if (draggedTodoId === null || draggedTodoId === targetId) return;
-    setTodos(prev => {
-      const copy = [...prev];
-      const draggedIndex = copy.findIndex(t => t.id === draggedTodoId);
-      const targetIndex = copy.findIndex(t => t.id === targetId);
-      if (draggedIndex === -1 || targetIndex === -1) return prev;
-      const [draggedItem] = copy.splice(draggedIndex, 1);
-      copy.splice(targetIndex, 0, draggedItem);
-      return copy;
-    });
-    setDraggedTodoId(null);
-  }
-
-  const handleStartEditTodo = (id, text) => {
-    setEditingTodoId(id)
-    setEditingTodoValue(text)
-  }
-
-  const handleSaveEditTodo = (id) => {
-    const clean = editingTodoValue.trim().toUpperCase()
-    if (!clean) {
-      setEditingTodoId(null)
-      return
-    }
-    setTodos(prev => prev.map(t => t.id === id ? { ...t, text: clean } : t))
-    setEditingTodoId(null)
-  }
 
   // Defensive layout observer to block temporary items from polluting state and localStorage [1]
   const handleLayoutChange = (currentLayout, allLayouts) => {
@@ -1124,233 +763,7 @@ function App() {
       </div>
     </div>
   )
-  // High-Resolution drawing subroutine with parent null-safety guards [3]
-  const drawGraph = (canvas) => {
-    if (!canvas || !canvas.parentElement) return
-    const ctx = canvas.getContext('2d')
-    const width = canvas.width = canvas.parentElement.clientWidth
-    const height = canvas.height = Math.max(180, canvas.parentElement.clientHeight - 130)
-
-    ctx.clearRect(0, 0, width, height)
-    const centerX = width / 2
-    const centerY = height / 2
-
-    // 1. Draw grid
-    ctx.strokeStyle = 'rgba(28, 53, 71, 0.2)'
-    ctx.lineWidth = 1
-    ctx.font = '8px sans-serif'
-    ctx.fillStyle = 'rgba(96, 128, 154, 0.4)'
-
-    const startX = (centerX % graphScale) - (graphCenter.x * graphScale) % graphScale
-    for (let x = startX - graphScale; x < width + graphScale; x += graphScale) {
-      ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, height)
-      ctx.stroke()
-      const cartX = (x - centerX) / graphScale + graphCenter.x
-      if (Math.abs(cartX) > 0.01) {
-        ctx.fillText(cartX.toFixed(1), x + 2, centerY - 4)
-      }
-    }
-
-    const startY = (centerY % graphScale) + (graphCenter.y * graphScale) % graphScale
-    for (let y = startY - graphScale; y < height + graphScale; y += graphScale) {
-      ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(width, y)
-      ctx.stroke()
-      const cartY = (centerY - y) / graphScale + graphCenter.y
-      if (Math.abs(cartY) > 0.01) {
-        ctx.fillText(cartY.toFixed(1), centerX + 4, y - 2)
-      }
-    }
-
-    // 2. Draw Main Axis
-    ctx.strokeStyle = 'rgba(28, 53, 71, 0.6)'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    const axisX = centerX - graphCenter.x * graphScale
-    const axisY = centerY + graphCenter.y * graphScale
-    ctx.moveTo(0, axisY)
-    ctx.lineTo(width, axisY)
-    ctx.moveTo(axisX, 0)
-    ctx.lineTo(axisX, height)
-    ctx.stroke()
-
-    // 3. Marching Squares multi-contour plotter
-    const colors = ['#00d0ff', '#ff7b00', '#00ff5e', '#a340ff', '#fa0036']
-    const step = 4 
-    const cols = Math.floor(width / step) + 1
-    const rows = Math.floor(height / step) + 1
-
-    equations.forEach((eq, index) => {
-      try {
-        const fn = compileEquationToFn(eq)
-        const grid = []
-
-        for (let c = 0; c < cols; c++) {
-          grid[c] = []
-          const screenX = c * step
-          const cartX = (screenX - centerX) / graphScale + graphCenter.x
-
-          for (let r = 0; r < rows; r++) {
-            const screenY = r * step
-            const cartY = (centerY - screenY) / graphScale + graphCenter.y
-            try {
-              grid[c][r] = fn.evaluate({ x: cartX, y: cartY })
-            } catch {
-              grid[c][r] = NaN
-            }
-          }
-        }
-
-        ctx.beginPath()
-        ctx.strokeStyle = colors[index % colors.length]
-        ctx.lineWidth = 2
-
-        for (let c = 0; c < cols - 1; c++) {
-          for (let r = 0; r < rows - 1; r++) {
-            const x0 = c * step
-            const x1 = (c + 1) * step
-            const y0 = r * step
-            const y1 = (r + 1) * step
-
-            const v00 = grid[c][r]
-            const v10 = grid[c + 1][r]
-            const v01 = grid[c][r + 1]
-            const v11 = grid[c + 1][r + 1]
-
-            if (isNaN(v00) || isNaN(v10) || isNaN(v01) || isNaN(v11)) continue
-
-            const epsilon = 1e-9
-            const adjustZero = (val) => val === 0 ? epsilon : val
-            const adj00 = adjustZero(v00)
-            const adj10 = adjustZero(v10)
-            const adj01 = adjustZero(v01)
-            const adj11 = adjustZero(v11)
-
-            const crossings = []
-            if (adj00 * adj10 < 0) crossings.push({ x: x0 + step * (Math.abs(adj00) / (Math.abs(adj00) + Math.abs(adj10))), y: y0 })
-            if (adj10 * adj11 < 0) crossings.push({ x: x1, y: y0 + step * (Math.abs(adj10) / (Math.abs(adj10) + Math.abs(adj11))) })
-            if (adj01 * adj11 < 0) crossings.push({ x: x0 + step * (Math.abs(adj01) / (Math.abs(adj01) + Math.abs(adj11))), y: y1 })
-            if (adj00 * adj01 < 0) crossings.push({ x: x0, y: y0 + step * (Math.abs(adj00) / (Math.abs(adj00) + Math.abs(adj01))) })
-
-            if (crossings.length >= 2) {
-              ctx.moveTo(crossings[0].x, crossings[0].y)
-              ctx.lineTo(crossings[1].x, crossings[1].y)
-            }
-          }
-        }
-        ctx.stroke()
-      } catch {}
-    })
-
-    // 4. Render intersection nodes & lines
-    searchedPoints.forEach(pt => {
-      ctx.fillStyle = '#ff8c00'
-      ctx.strokeStyle = 'rgba(255, 140, 0, 0.6)'
-      ctx.lineWidth = 1
-
-      if (pt.type === 'point') {
-        const screenX = centerX + (pt.x - graphCenter.x) * graphScale
-        const screenY = centerY - (pt.y - graphCenter.y) * graphScale
-
-        ctx.beginPath()
-        ctx.arc(screenX, screenY, 4.5, 0, Math.PI * 2)
-        ctx.fill()
-        const roundedX = Math.round(pt.x * 1000) / 1000
-        const roundedY = Math.round(pt.y * 1000) / 1000
-        ctx.fillText(`P(${roundedX}, ${roundedY})`, screenX + 8, screenY - 5)
-      } else if (pt.type === 'x-line') {
-        const screenX = centerX + (pt.val - graphCenter.x) * graphScale
-        ctx.beginPath()
-        ctx.setLineDash([4, 4])
-        ctx.moveTo(screenX, 0)
-        ctx.lineTo(screenX, height)
-        ctx.stroke()
-        ctx.setLineDash([])
-    
-        equations.forEach(eq => {
-          try {
-            let normalized = eq
-              .replace(/√\s*\(([^)]+)\)/g, 'sqrt($1)')
-              .replace(/√\s*([a-zA-Z0-9.]+)/g, 'sqrt($1)')
-              .replace(/\bln\(/g, 'log(')
-              .replace(/\^1\/2/g, '^0.5')
-              .replace(/\^\(1\/2\)/g, '^0.5')
-
-            let rightSide = normalized
-            if (normalized.includes('=')) {
-              rightSide = normalized.split('=')[1].trim()
-            }
-            const compRight = math.compile(rightSide)
-            const yVal = compRight.evaluate({ x: pt.val })
-            const screenY = centerY - (yVal - graphCenter.y) * graphScale
-
-            if (!isNaN(screenY) && isFinite(screenY)) {
-              ctx.beginPath()
-              ctx.arc(screenX, screenY, 4, 0, Math.PI * 2)
-              ctx.fill()
-              const roundedY = Math.round(yVal * 100) / 100
-              ctx.fillText(`(${pt.val}, ${roundedY})`, screenX + 8, screenY - 5)
-            }
-          } catch {}
-        })
-      }
-    })
-
-    // 5. Extrema solvers
-    if (showExtremaFinder) {
-      ctx.strokeStyle = 'rgba(208, 112, 24, 0.45)'
-      ctx.lineWidth = 1
-
-      const xMinVal = parseFloat(domainMin)
-      if (!isNaN(xMinVal)) {
-        const screenX = centerX + (xMinVal - graphCenter.x) * graphScale
-        ctx.beginPath()
-        ctx.setLineDash([3, 3])
-        ctx.moveTo(screenX, 0)
-        ctx.lineTo(screenX, height)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(208, 112, 24, 0.6)'
-        ctx.fillText(`x_min = ${xMinVal}`, screenX + 4, 12)
-      }
-
-      const xMaxVal = parseFloat(domainMax)
-      if (!isNaN(xMaxVal)) {
-        const screenX = centerX + (xMaxVal - graphCenter.x) * graphScale
-        ctx.beginPath()
-        ctx.setLineDash([3, 3])
-        ctx.moveTo(screenX, 0)
-        ctx.lineTo(screenX, height)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(208, 112, 24, 0.6)'
-        ctx.fillText(`x_max = ${xMaxVal}`, screenX + 4, 12)
-      }
-
-      if (resolvedExtrema) {
-        const screenX = centerX + (resolvedExtrema.x - graphCenter.x) * graphScale
-        const screenY = centerY - (resolvedExtrema.y - graphCenter.y) * graphScale
-
-        ctx.beginPath()
-        ctx.arc(screenX, screenY, 6, 0, Math.PI * 2)
-        ctx.fillStyle = '#ff8c00'
-        ctx.fill()
-        ctx.strokeStyle = '#fff'
-        ctx.lineWidth = 1
-        ctx.stroke()
-
-        const roundedX = Math.round(resolvedExtrema.x * 1000) / 1000
-        const roundedY = Math.round(resolvedExtrema.y * 1000) / 1000
-        ctx.font = 'bold 9px sans-serif'
-        ctx.fillStyle = '#ff8c00'
-        ctx.fillText(`${resolvedExtrema.type}: (${roundedX}, ${roundedY})`, screenX + 10, screenY - 5)
-      }
-    }
-  }
-
+  
   // Safe Context-Driven Callback Refs drawing elements seamlessly on mount/state updates [1, 3]
   const gridCanvasRef = React.useCallback((node) => {
     if (node) drawGraph(node)
@@ -1788,167 +1201,6 @@ function App() {
                 <div className="text-xs text-cyan-700 italic select-none py-6 text-center">
                   INVALID_YOUTUBE_URL_OR_ID_NODE
                 </div>
-              )}
-            </div>
-          </div>
-        )
-      case 'todo':
-        return (
-          <div className="p-4 flex-grow flex flex-col justify-start gap-y-3 overflow-hidden text-sm font-sans">
-            <div className="flex gap-1.5">
-              <input 
-                type="text" 
-                placeholder="ADD NEW OPERATIONAL TASK..." 
-                value={newTodo}
-                onChange={(e) => setNewTodo(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTodo()}
-                className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-xs px-3 py-1.5 rounded focus:outline-none focus:border-[#00d2ff] flex-grow uppercase font-sans"
-              />
-              <button 
-                onClick={handleAddTodo}
-                className="bg-[#132533] hover:bg-[#1c3547] active:bg-[#00d2ff] active:text-black border border-[#1c3547] text-cyan-400 text-xs px-3 rounded font-bold transition-all cursor-pointer font-sans"
-              >
-                ADD
-              </button>
-            </div>
-
-            <div className="flex-grow overflow-auto pr-1 space-y-2">
-              {todos.length === 0 ? (
-                <div className="text-xs text-cyan-700 italic select-none py-4 text-center">
-                  NO_ACTIVE_TASKS
-                </div>
-              ) : (
-                todos.map(todo => {
-                  const isExpanded = expandedTodos.includes(todo.id)
-                  const subTasksArray = todo.subTasks || []
-                  const isEditing = todo.id === editingTodoId
-
-                  return (
-                    <div 
-                      key={todo.id} 
-                      draggable={!isEditing}
-                      onDragStart={(e) => handleDragStart(e, todo.id)}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, todo.id)}
-                      onDragEnd={(e) => {
-                        e.stopPropagation();
-                        setDraggedTodoId(null);
-                      }}
-                      className={`border-b border-[#1c3547]/10 pb-2 last:border-0 last:pb-0 transition-opacity duration-150 ${
-                        draggedTodoId === todo.id ? 'opacity-40' : ''
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2 flex-grow overflow-hidden mr-2">
-                          <button 
-                            onClick={() => handleToggleExpand(todo.id)}
-                            className="text-xs text-[#60809a] hover:text-cyan-400 font-bold focus:outline-none select-none transition-colors w-3 text-center cursor-pointer"
-                            title={isExpanded ? "COLLAPSE SUB-TASKS" : "EXPAND SUB-TASKS"}
-                          >
-                            {isExpanded ? '▼' : '▶'}
-                          </button>
-
-                          <button 
-                            onClick={() => handleToggleTodo(todo.id)}
-                            className={`w-5 h-5 flex-shrink-0 flex items-center justify-center text-xs font-extrabold rounded transition-all focus:outline-none select-none cursor-pointer ${
-                              todo.completed 
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
-                                : 'border border-[#1c3547] text-[#60809a] hover:text-cyan-400 hover:border-cyan-500/40'
-                            }`}
-                          >
-                            {todo.completed ? '✓' : ''}
-                          </button>
-                          
-                          {isEditing ? (
-                          <input 
-                            type="text"
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveEdit(idx)
-                              if (e.key === 'Escape') setEditingIndex(null)
-                            }}
-                            className="bg-[#090e14] border border-[#00d2ff] text-cyan-100 text-xs px-1 py-0.5 rounded focus:outline-none w-full font-sans" // Removed onBlur to protect editing lifecycle in portals [3]
-                            autoFocus
-                          />
-                        ) : (
-                            <span 
-                              onDoubleClick={() => handleStartEditTodo(todo.id, todo.text)}
-                              className={`truncate font-semibold uppercase leading-none cursor-grab active:cursor-grabbing select-none ${
-                                todo.completed ? 'line-through text-cyan-700/50' : 'text-cyan-100'
-                              }`}
-                              title="DOUBLE-CLICK TO EDIT // DRAG TO REORDER"
-                            >
-                              {todo.text}
-                            </span>
-                          )}
-                        </div>
-                        
-                        <button 
-                          onClick={() => handleRemoveTodo(todo.id)}
-                          className="text-[#60809a]/40 hover:text-rose-500 text-xs font-bold focus:outline-none flex-shrink-0 cursor-pointer"
-                        >
-                          [✕]
-                        </button>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="pl-8 pr-1 py-1.5 space-y-1.5 border-l border-[#1c3547]/30 ml-5 mt-1.5 transition-all duration-300">
-                          {subTasksArray.length === 0 ? (
-                            <div className="text-[10px] text-cyan-700/60 italic py-1 pl-1 select-none">
-                              NO_SUB_TASKS_DECLARED
-                            </div>
-                          ) : (
-                            subTasksArray.map(sub => (
-                              <div key={sub.id} className="flex justify-between items-center text-xs">
-                                <div className="flex items-center gap-2 overflow-hidden flex-grow mr-2">
-                                  <button 
-                                    onClick={() => handleToggleSubTask(todo.id, sub.id)}
-                                    className={`w-4 h-4 flex-shrink-0 flex items-center justify-center text-[10px] font-extrabold rounded transition-all focus:outline-none select-none cursor-pointer ${
-                                      sub.completed 
-                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                        : 'border border-[#1c3547] text-[#60809a] hover:text-cyan-400 hover:border-cyan-500/40'
-                                    }`}
-                                  >
-                                    {sub.completed ? '✓' : ''}
-                                  </button>
-                                  <span className={`truncate leading-none ${
-                                    sub.completed ? 'line-through text-cyan-700/50' : 'text-cyan-200'
-                                  }`}>
-                                    {sub.text}
-                                  </span>
-                                </div>
-                                <button 
-                                  onClick={() => handleRemoveSubTask(todo.id, sub.id)}
-                                  className="text-[#60809a]/40 hover:text-rose-500 text-[10px] font-bold pl-1.5 cursor-pointer"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ))
-                          )}
-
-                          <div className="flex gap-1 pt-1.5 border-t border-[#1c3547]/10 select-none">
-                            <input 
-                              type="text" 
-                              placeholder="ADD SUB-TASK..." 
-                              value={subTaskInputs[todo.id] || ''}
-                              onChange={(e) => handleSubInputChange(todo.id, e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && handleAddSubTask(todo.id)}
-                              className="bg-[#090e14] border border-[#1c3547]/50 text-cyan-100 text-[10px] px-2 py-0.5 rounded focus:outline-none focus:border-[#00d2ff] flex-grow font-sans uppercase"
-                            />
-                            <button 
-                              onClick={() => handleAddSubTask(todo.id)}
-                              className="bg-[#132533] hover:bg-[#1c3547] border border-[#1c3547] text-cyan-400 text-xs px-2 rounded font-bold cursor-pointer"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
               )}
             </div>
           </div>
@@ -2399,7 +1651,7 @@ function App() {
             onFocus={() => setFocalWidgetId('todo')}
             onDoubleClickHeader={() => setFocalWidgetId('todo')}
           >
-            {renderSubsystemInnerContent('todo')}
+              <TodoWidget />
           </WidgetShell>
         )}
 
@@ -2426,7 +1678,7 @@ function App() {
 
       {/* Unified Bottom Drawer & Archive Compartment */}
       <div 
-        onDragOver={handleDragOver}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
         className={`fixed bottom-0 left-0 right-0 bg-[#090e14]/95 border-t-2 border-[#d07018] shadow-[0_-15px_35px_rgba(0,0,0,0.9)] z-40 p-4 transition-all duration-300 transform${
           activeDragId 
             ? 'h-28 translate-y-0 opacity-100' 
@@ -2554,7 +1806,15 @@ function App() {
 
             {/* Focal Target Body Container */}
             <div className="flex-grow overflow-hidden flex flex-col bg-[#090e14]/50">
-              {renderSubsystemInnerContent(focalWidgetId, true)} {/* Passing true prevents grid canvas reference swaps */}
+              {focalWidgetId === 'weather' ? (
+                <WeatherWidget onLoadingChange={setWeatherLoading} />
+              ) : focalWidgetId === 'todo' ? (
+                <TodoWidget />
+              ) : focalWidgetId === 'calculator' ? (
+                <CalculatorWidget />
+              ) : (
+                renderSubsystemInnerContent(focalWidgetId, true)
+              )}
             </div>
 
             {/* Diagnostic Footer */}
