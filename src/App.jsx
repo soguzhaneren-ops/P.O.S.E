@@ -45,7 +45,7 @@ function App() {
     await win.setFullscreen(!isFs)
   }
   const [graphScale, setGraphScale] = useState(32)
-  
+  const [weatherLoading, setWeatherLoading] = useState(true)
   // Starred market symbols
   const [starredSymbols, setStarredSymbols] = useState(() => {
     const saved = localStorage.getItem('starredSymbols')
@@ -763,21 +763,10 @@ function App() {
       </div>
     </div>
   )
-  
-  // Safe Context-Driven Callback Refs drawing elements seamlessly on mount/state updates [1, 3]
-  const gridCanvasRef = React.useCallback((node) => {
-    if (node) drawGraph(node)
-  }, [equations, layouts, graphScale, graphCenter, searchedPoints, showExtremaFinder, domainMin, domainMax, resolvedExtrema, focalWidgetId])
-
-  const focalCanvasRef = React.useCallback((node) => {
-    if (node) drawGraph(node)
-  }, [equations, graphScale, graphCenter, searchedPoints, showExtremaFinder, domainMin, domainMax, resolvedExtrema])
-  
-  // Sub-System inner content module builder (Context-independent context mapping) [1]
+    
+  // Sub-System inner content module builder (Context-independent context mapping) [1
   const renderSubsystemInnerContent = (id, isFocal = false) => {
-    const activeRef = isFocal ? focalCanvasRef : gridCanvasRef // Assigns correct high-performance callback ref [1, 3]
     switch (id) {
-      
       case 'market':
         return (
           <div className="p-4 flex-grow flex flex-col justify-start gap-y-3 overflow-hidden font-sans">
@@ -1204,239 +1193,7 @@ function App() {
               )}
             </div>
           </div>
-        )
-      case 'calculator':
-        return (
-          <div className="p-4 flex-grow flex flex-col justify-start gap-y-3 overflow-hidden text-sm font-sans">
-            <div className="flex-grow relative h-full w-full overflow-hidden rounded bg-[#090e14] border border-[#1c3547]/50 shadow-[0_0_25px_rgba(6,182,212,0.05)]">
-              <canvas 
-                ref={activeRef} // Dynamic Context Canvas Mapping [1]
-                className="absolute inset-0 w-full h-full block cursor-grab active:cursor-grabbing" 
-                onMouseDown={handleCanvasMouseDown}
-                onMouseMove={handleCanvasMouseMove}
-                onMouseUp={handleCanvasMouseUp}
-                onMouseLeave={handleCanvasMouseUp}
-              />
-
-              <div className="absolute top-3 left-3 z-20">
-                <button 
-                  onClick={() => {
-                    setShowExtremaFinder(!showExtremaFinder)
-                    setResolvedExtrema(null)
-                  }}
-                  className={`px-2 py-1 rounded border text-[10px] font-bold transition-all focus:outline-none cursor-pointer ${
-                    showExtremaFinder 
-                      ? 'bg-[#d07018] text-black border-[#d07018]' 
-                      : 'bg-[#132533]/80 border-[#1c3547] text-cyan-400 hover:text-cyan-200'
-                  }`}
-                >
-                  {showExtremaFinder ? '[ CLOSE_ANALYSERS ]' : '[ EXTREMA_FINDER ]'}
-                </button>
-              </div>
-
-              {showExtremaFinder && (
-                <div className="absolute top-10 left-3 w-60 bg-slate-950/85 border border-cyan-500/20 backdrop-blur-md rounded p-3 flex flex-col gap-3 z-20 text-[10px]">
-                  <div 
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const eq = e.dataTransfer.getData("text/plain")
-                      setExtremaEq(eq)
-                      setResolvedExtrema(null)
-                    }}
-                    className="border border-dashed border-cyan-500/30 bg-black/40 rounded p-3 text-center text-[9px] text-[#60809a] hover:border-cyan-400 hover:text-cyan-400 transition-all cursor-pointer"
-                    title="DRAG AN ACTIVE FUNCTION & DROP HERE"
-                  >
-                    {extremaEq ? `TARGET // f(x) = ${extremaEq.toUpperCase()}` : '[ DROP ACTIVE FUNCTION HERE ]'}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <span className="text-[#60809a] font-bold text-[8px] tracking-widest uppercase">DOMAIN_LIMITS [x_min, x_max]</span>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        placeholder="X_MIN"
-                        value={domainMin}
-                        onChange={(e) => { setDomainMin(e.target.value); setResolvedExtrema(null); }}
-                        className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-[10px] px-2 py-1 rounded focus:outline-none focus:border-[#00d2ff] w-1/2"
-                      />
-                      <input 
-                        type="text" 
-                        placeholder="X_MAX"
-                        value={domainMax}
-                        onChange={(e) => { setDomainMax(e.target.value); setResolvedExtrema(null); }}
-                        className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-[10px] px-2 py-1 rounded focus:outline-none focus:border-[#00d2ff] w-1/2"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center bg-[#090e14]/50 border border-[#1c3547]/20 p-2 rounded">
-                    <span className="text-[#60809a] font-bold text-[8px] tracking-widest uppercase">RESOLVE_MODE</span>
-                    <div className="flex gap-1.5 font-bold">
-                      <button 
-                        onClick={() => { setExtremaType('MAX'); setResolvedExtrema(null); }}
-                        className={`px-1.5 py-0.5 rounded border text-[8px] transition-all focus:outline-none cursor-pointer ${
-                          extremaType === 'MAX' 
-                            ? 'bg-cyan-500 text-black border-cyan-500' 
-                            : 'border-[#1c3547] text-[#60809a] hover:text-cyan-400'
-                        }`}
-                      >
-                        MAX
-                      </button>
-                      <button 
-                        onClick={() => { setExtremaType('MIN'); setResolvedExtrema(null); }}
-                        className={`px-1.5 py-0.5 rounded border text-[8px] transition-all focus:outline-none cursor-pointer ${
-                          extremaType === 'MIN' 
-                            ? 'bg-rose-600 text-black border-rose-600' 
-                            : 'border-[#1c3547] text-[#60809a] hover:text-cyan-400'
-                        }`}
-                      >
-                        MIN
-                      </button>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleResolveExtrema}
-                    className="w-full bg-[#132533] hover:bg-[#1c3547] active:bg-[#d07018] active:text-black border border-[#1c3547] text-cyan-400 py-1.5 rounded font-bold transition-all text-[10px] cursor-pointer"
-                  >
-                    RUN_ANALYSER
-                  </button>
-                </div>
-              )}
-
-              <div className="absolute bottom-4 right-[288px] flex flex-col gap-1 text-[10px] font-bold z-20">
-                <button 
-                  onClick={() => setGraphScale(prev => Math.min(128, prev * 1.25))}
-                  className="bg-[#132533]/80 hover:bg-[#1c3547] active:bg-[#00d2ff] active:text-black border border-[#1c3547] text-cyan-400 w-7 h-7 rounded flex items-center justify-center transition-all focus:outline-none cursor-pointer"
-                  title="ZOOM IN"
-                >
-                  +
-                </button>
-                <button 
-                  onClick={() => setGraphScale(prev => Math.max(8, prev / 1.25))}
-                  className="bg-[#132533]/80 hover:bg-[#1c3547] active:bg-[#00d2ff] active:text-black border border-[#1c3547] text-cyan-400 w-7 h-7 rounded flex items-center justify-center transition-all focus:outline-none cursor-pointer"
-                  title="ZOOM OUT"
-                >
-                  -
-                </button>
-                <button 
-                  onClick={() => { setGraphScale(32); setGraphCenter({ x: 0, y: 0 }); }}
-                  className="bg-[#132533]/80 hover:bg-[#1c3547] active:bg-[#00d2ff] active:text-black border border-[#1c3547] text-cyan-400 w-7 h-7 rounded flex items-center justify-center transition-all focus:outline-none cursor-pointer"
-                  title="RESET VIEWPORT (0,0)"
-                >
-                  ⌖
-                </button>
-              </div>
-
-              <div className="absolute right-4 top-4 bottom-4 w-64 bg-transparent flex flex-col gap-4 justify-between h-[calc(100%-32px)] z-10 overflow-hidden">
-                <div className="space-y-1.5 overflow-auto max-h-[45%] pr-1">
-                  <div className="text-[7.5px] text-[#60809a] font-bold uppercase tracking-widest mb-1.5 border-b border-[#1c3547]/30 pb-1">ACTIVE_FUNCTIONS</div>
-                  {equations.map((eq, idx) => {
-                    const colors = ['text-cyan-400', 'text-amber-500', 'text-emerald-400', 'text-purple-400', 'text-rose-500']
-                    const isEditing = idx === editingIndex
-
-                    return (
-                      <div 
-                        key={idx} 
-                        draggable={!isEditing}
-                        onDragStart={(e) => {
-                          e.stopPropagation();
-                          e.dataTransfer.setData("text/plain", eq)
-                        }}
-                        className="flex justify-between items-center bg-[#0c1821]/90 border border-[#1c3547]/50 px-2.5 py-1 rounded min-h-[26px] backdrop-blur-sm cursor-grab active:cursor-grabbing"
-                        title="DRAG TO EXTREMA SENSOR"
-                      >
-                        {isEditing ? (
-                          <input 
-                            type="text"
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveEdit(idx)
-                              if (e.key === 'Escape') setEditingIndex(null)
-                            }}
-                            onBlur={() => handleSaveEdit(idx)}
-                            className="bg-[#090e14] border border-[#00d2ff] text-cyan-100 text-xs px-1 py-0.5 rounded focus:outline-none w-full font-sans"
-                            autoFocus
-                          />
-                        ) : (
-                          <span 
-                            onClick={(e) => {
-                              if (e.detail === 2) { // Native browser click detail counter bypasses synthetic overlay locks [3]
-                                e.stopPropagation();
-                                handleStartEdit(idx, eq);
-                              }
-                            }}
-                            className={`text-xs font-bold truncate select-none cursor-pointer ${colors[idx % colors.length]}`} // Restored select-none to prevent selection highlight from blocking clicks [3]
-                            title="DOUBLE-CLICK TO EDIT // DRAG TO ANALYZE"
-                          >
-                            {formatMathToJSX(eq)}
-                          </span>
-                        )}
-                        {!isEditing && (
-                          <button onClick={() => handleRemoveEquation(idx)} className="text-[#60809a]/40 hover:text-rose-500 text-[10px] font-bold ml-1.5 focus:outline-none cursor-pointer">✕</button>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div className="space-y-3.5 border-t border-[#1c3547]/20 pt-3">
-                  <div>
-                    <div className="text-[8px] text-[#60809a] font-bold uppercase tracking-widest mb-1.5 select-none">PLOT_EQUATION</div>
-                    <div className="flex gap-1.5">
-                      <input 
-                        type="text" 
-                        placeholder="" 
-                        value={newEqInput}
-                        onChange={(e) => setNewEqInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddEquation()}
-                        className="bg-[#090e14]/80 border border-[#1c3547] text-cyan-100 text-xs px-3 py-1.5 rounded focus:outline-none focus:border-[#00d2ff] flex-grow font-sans"
-                      />
-                      <button 
-                        onClick={handleAddEquation} 
-                        className="bg-[#132533] hover:bg-[#1c3547] active:bg-[#00d2ff] active:text-black border border-[#1c3547] text-cyan-400 text-xs px-3 py-1.5 rounded font-bold transition-all focus:outline-none cursor-pointer"
-                      >
-                        ADD
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-[8px] text-[#60809a] font-bold uppercase tracking-widest mb-1.5 flex justify-between select-none">
-                      <span>SEARCH_POINT</span>
-                      {searchedPoints.length > 0 && (
-                        <button onClick={handleClearPoints} className="text-rose-500 hover:underline hover:text-rose-400 font-bold focus:outline-none cursor-pointer">CLR_ALL</button>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5">
-                      <input 
-                        type="text" 
-                        placeholder="" 
-                        value={searchPointInput}
-                        onChange={(e) => setSearchPointInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearchPoint()}
-                        className="bg-[#090e14]/90 border border-[#1c3547] text-cyan-100 text-xs px-3 py-1.5 rounded focus:outline-none focus:border-[#00d2ff] flex-grow font-sans"
-                      />
-                      <button 
-                        onClick={handleSearchPoint} 
-                        className="bg-[#132533] hover:bg-[#1c3547] active:bg-[#00d2ff] active:text-black border border-[#1c3547] text-cyan-400 text-xs px-3 py-1.5 rounded font-bold transition-all focus:outline-none cursor-pointer"
-                      >
-                        PLOT
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )
+        )      
       default:
         return null
     }
@@ -1670,7 +1427,7 @@ function App() {
             onFocus={() => setFocalWidgetId('calculator')}
             onDoubleClickHeader={() => setFocalWidgetId('calculator')}
           >
-            {renderSubsystemInnerContent('calculator')}
+            <CalculatorWidget/>
           </WidgetShell>
         )}
         </ResponsiveReactGridLayout>
