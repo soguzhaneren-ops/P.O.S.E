@@ -1,5 +1,6 @@
 import * as math from 'mathjs'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { WidthProvider, Responsive as ResponsiveGridLayout } from 'react-grid-layout/legacy'
 import WidgetShell from './components/WidgetShell'
 import WeatherWidget from './widgets/WeatherWidget'
@@ -101,11 +102,66 @@ function App() {
   })
   const [isDockOpen, setIsDockOpen] = useState(false)
   const [activeDragId, setActiveDragId] = useState(null)
+  const [isGridInteracting, setIsGridInteracting] = useState(false)
   const [previewDockingId, setPreviewDockingId] = useState(null)
 
   // State-driven Focal Diagnostic isolation controllers [3]
   const [focalWidgetId, setFocalWidgetId] = useState(null)
   const [isClosingFocal, setIsClosingFocal] = useState(false)
+
+  // SocialWidget lives in a single fixed-position floating panel portaled straight into
+  // document.body — a container reference that never changes — so it never remounts.
+  // Invisible anchor divs in the grid tile and the focal overlay mark where that panel
+  // should visually sit; we measure their rects and move the panel to match, instead of
+  // ever changing the portal's own container (which would force a remount + reload the
+  // iframe, restarting YouTube playback).
+  const socialGridAnchorRef = useRef(null)
+  const socialFocalAnchorRef = useRef(null)
+  const [socialPanelRect, setSocialPanelRect] = useState(null)
+  const isSocialFocal = focalWidgetId === 'social'
+
+  const syncSocialPanelRect = useCallback(() => {
+    // Docked (and not focal) means the grid anchor has unmounted entirely — there's
+    // nowhere for the panel to sit, so hide it instead of leaving it frozen at its
+    // last known position, which is what happened before this check existed.
+    if (dockedWidgets.includes('social') && !isSocialFocal) {
+      setSocialPanelRect(prev => (prev === null ? prev : null))
+      return
+    }
+    const anchor = isSocialFocal ? socialFocalAnchorRef.current : socialGridAnchorRef.current
+    if (!anchor) return
+    const rect = anchor.getBoundingClientRect()
+    setSocialPanelRect(prev => {
+      if (prev && prev.top === rect.top && prev.left === rect.left && prev.width === rect.width && prev.height === rect.height) {
+        return prev
+      }
+      return { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+    })
+  }, [isSocialFocal, dockedWidgets])
+
+  // Synchronous, guaranteed sync the instant focus mode opens/closes — doesn't depend on
+  // requestAnimationFrame at all, unlike the continuous tracker below, so the panel snaps
+  // to the right place immediately even if rAF is throttled (e.g. an unfocused window).
+  // A follow-up sync after the CSS zoom transition's duration catches its settled end
+  // state the same way, in case rAF never got a chance to track it continuously.
+  useLayoutEffect(() => {
+    syncSocialPanelRect()
+    const settleId = setTimeout(syncSocialPanelRect, 400)
+    return () => clearTimeout(settleId)
+  }, [isSocialFocal, isClosingFocal, syncSocialPanelRect])
+
+  // Continuously track the current anchor's on-screen position every frame, so the
+  // floating panel follows grid dragging/resizing and the focal overlay's zoom animation
+  // alike, instead of only updating on specific events we'd otherwise have to enumerate.
+  useEffect(() => {
+    let rafId
+    const tick = () => {
+      syncSocialPanelRect()
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [syncSocialPanelRect])
 
   // Handle smooth exiting transition for Focal Diagnostic Isolation Mode [3]
   const handleCloseFocal = () => {
@@ -343,7 +399,10 @@ function App() {
           isResizable={true}
           draggableHandle=".drag-handle"
           margin={[16, 16]}
-          onLayoutChange={handleLayoutChange}
+          onLayoutChange={(currentLayout, allLayouts) => {
+            handleLayoutChange(currentLayout, allLayouts)
+            syncSocialPanelRect()
+          }}
           onBreakpointChange={(newBreakpoint) => setCurrentBreakpoint(newBreakpoint)}
 
           // Native external droppable supports [2]
@@ -354,6 +413,7 @@ function App() {
           // Safe, drag-initiated state-driven detection boundaries [1]
           onDragStart={(layout, oldItem, newItem) => {
             setActiveDragId(newItem.i)
+            setIsGridInteracting(true)
           }}
           onDrag={(layout, oldItem, newItem, placeholder, e) => {
             // Safely verify mouse cursor position using optional chaining to prevent synthetics crashes [1]
@@ -363,6 +423,7 @@ function App() {
             } else {
               if (previewDockingId === newItem.i) setPreviewDockingId(null)
             }
+            syncSocialPanelRect()
           }}
           onDragStop={(layout, oldItem, newItem, placeholder, e) => {
             if (isDraggingOverBottomBay(e)) {
@@ -370,6 +431,17 @@ function App() {
             }
             setActiveDragId(null)
             setPreviewDockingId(null)
+            setIsGridInteracting(false)
+            syncSocialPanelRect()
+          }}
+          // Keep the social floating panel's size synced live while its grid tile is
+          // being resized, not just after — react-grid-layout doesn't otherwise expose
+          // this and the panel isn't actually part of this tile's own DOM subtree [3]
+          onResizeStart={() => setIsGridInteracting(true)}
+          onResize={() => syncSocialPanelRect()}
+          onResizeStop={() => {
+            setIsGridInteracting(false)
+            syncSocialPanelRect()
           }}
         >
           {!dockedWidgets.includes('weather') && (
@@ -384,7 +456,7 @@ function App() {
             onFocus={() => setFocalWidgetId('weather')}
             onDoubleClickHeader={() => setFocalWidgetId('weather')}
           >
-            <WeatherWidget onLoadingChange={setWeatherLoading} />
+            {focalWidgetId !== 'weather' && <WeatherWidget onLoadingChange={setWeatherLoading} />}
           </WidgetShell>
         )}
 
@@ -401,7 +473,7 @@ function App() {
             onFocus={() => setFocalWidgetId('market')}
             onDoubleClickHeader={() => setFocalWidgetId('market')}
           >
-            <MarketWidget onLoadingChange={setMarketLoading} />
+            {focalWidgetId !== 'market' && <MarketWidget onLoadingChange={setMarketLoading} />}
           </WidgetShell>
         )}
 
@@ -419,7 +491,7 @@ function App() {
             onFocus={() => setFocalWidgetId('main')}
             onDoubleClickHeader={() => setFocalWidgetId('main')}
           >
-            <MainWidget />
+            {focalWidgetId !== 'main' && <MainWidget />}
           </WidgetShell>
         )}
 
@@ -436,7 +508,7 @@ function App() {
             onFocus={() => setFocalWidgetId('news')}
             onDoubleClickHeader={() => setFocalWidgetId('news')}
           >
-            <NewsWidget onLoadingChange={setNewsLoading} />
+            {focalWidgetId !== 'news' && <NewsWidget onLoadingChange={setNewsLoading} />}
           </WidgetShell>
         )}
 
@@ -455,7 +527,7 @@ function App() {
             onFocus={() => setFocalWidgetId('social')}
             onDoubleClickHeader={() => setFocalWidgetId('social')}
           >
-            <SocialWidget />
+            <div ref={socialGridAnchorRef} className="flex-grow flex flex-col overflow-hidden" />
           </WidgetShell>
         )}
           
@@ -475,7 +547,7 @@ function App() {
             onFocus={() => setFocalWidgetId('todo')}
             onDoubleClickHeader={() => setFocalWidgetId('todo')}
           >
-              <TodoWidget />
+              {focalWidgetId !== 'todo' && <TodoWidget />}
           </WidgetShell>
         )}
 
@@ -494,11 +566,61 @@ function App() {
             onFocus={() => setFocalWidgetId('calculator')}
             onDoubleClickHeader={() => setFocalWidgetId('calculator')}
           >
-            <CalculatorWidget/>
+            {focalWidgetId !== 'calculator' && <CalculatorWidget/>}
           </WidgetShell>
         )}
         </ResponsiveReactGridLayout>
       </div>
+
+      {/* Single persistent SocialWidget instance in a floating panel that's repositioned via
+          CSS to match the grid tile or the focal overlay — never remounted, so YouTube
+          playback survives toggling focus mode [3] */}
+      {socialPanelRect && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: socialPanelRect.top,
+            left: socialPanelRect.left,
+            width: socialPanelRect.width,
+            height: socialPanelRect.height,
+            zIndex: isSocialFocal ? 55 : 1,
+            // This outer box is click-through everywhere by default. It exists only to
+            // anchor the interactive inner box below at the right screen position —
+            // it isn't actually part of the grid tile's DOM (it's portaled straight
+            // into document.body), so without this it would eat every pointer event
+            // in the whole tile area, resize handle included.
+            pointerEvents: 'none',
+            // Smooths the focal zoom transition. Deliberately scoped to focal mode
+            // only, not grid dragging/resizing: there the panel must track the mouse
+            // 1:1 with zero lag, and a transition risks briefly leaving the panel
+            // mispositioned right over the resize handle it's supposed to stay clear
+            // of. In focal mode the worst case is a cosmetic mismatch, not a blocked
+            // interaction, so it's a safe place to trade a little precision for polish.
+            transition: isSocialFocal && !isGridInteracting
+              ? 'top 120ms ease-out, left 120ms ease-out, width 120ms ease-out, height 120ms ease-out'
+              : 'none',
+          }}
+        >
+          <div
+            className="flex flex-col"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              // In the grid (not focal), pull the interactive area back from the
+              // bottom-right corner so react-grid-layout's resize handle underneath
+              // stays reachable. No pullback needed while focal — nothing else lives
+              // in that corner there.
+              right: isSocialFocal ? 0 : 24,
+              bottom: isSocialFocal ? 0 : 24,
+              pointerEvents: 'auto',
+            }}
+          >
+            <SocialWidget />
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Unified Bottom Drawer & Archive Compartment */}
       <div 
@@ -641,7 +763,7 @@ function App() {
               ) : focalWidgetId === 'news' ? (
                 <NewsWidget onLoadingChange={setNewsLoading} />
               ) : focalWidgetId === 'social' ? (
-                <SocialWidget />
+                <div ref={socialFocalAnchorRef} className="flex-grow flex flex-col overflow-hidden" />
               ) : focalWidgetId === 'main' ? (
                 <MainWidget />
               ) : null}

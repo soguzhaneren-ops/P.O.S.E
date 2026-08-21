@@ -11,18 +11,7 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "title": "TACTICAL_TELEMETRY // CONSOLE",
-        "width": 1280,
-        "height": 720,
-        "decorations": false,
-        "transparent": true,
-        "resizable": true,
-        "center": true,
-        "dragDropEnabled": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
