@@ -29,9 +29,6 @@ function NewsWidget({ onLoadingChange }) {
       } else if (newsCategory === 'FINANCE') {
         targetFeedUrl = 'https://finance.yahoo.com/news/rssindex'
         sourceName = 'YAHOO'
-      } else if (newsCategory === 'POLITICS') {
-        targetFeedUrl = 'http://feeds.bbci.co.uk/news/politics/rss.xml'
-        sourceName = 'BBC POLITICS'
       }
 
       tauriFetch(targetFeedUrl)
@@ -99,7 +96,7 @@ function NewsWidget({ onLoadingChange }) {
         setIsFadingOut(true)
         setTimeout(() => {
           setNewsCategory(current => {
-            const next = current === 'LOCAL' ? 'FINANCE' : current === 'FINANCE' ? 'POLITICS' : 'LOCAL'
+            const next = current === 'LOCAL' ? 'FINANCE' : 'LOCAL'
             setDisplayCategory(next)
             return next
           })
@@ -146,16 +143,6 @@ function NewsWidget({ onLoadingChange }) {
           }`}
         >
           [ FINANCE ]
-        </button>
-        <button
-          onClick={() => handleManualCategoryChange('POLITICS')}
-          className={`px-2 py-1 rounded border transition-colors cursor-pointer ${
-            displayCategory === 'POLITICS'
-              ? 'bg-[#d07018] text-black border-[#d07018]'
-              : 'border-[#1c3547] text-[#60809a] hover:text-cyan-400'
-          }`}
-        >
-          [ POLITICS ]
         </button>
       </div>
 
