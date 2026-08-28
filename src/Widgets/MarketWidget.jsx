@@ -95,7 +95,7 @@ function MarketWidget({ onLoadingChange }) {
               const priceVal = data.c
               const changeVal = data.dp || 0
               newData[sym] = {
-                price: `€${priceVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                price: `$${priceVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
                 change: `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%`,
                 isPositive: changeVal >= 0
               }
@@ -369,7 +369,7 @@ function MarketWidget({ onLoadingChange }) {
                 <>
                   <div className="text-xs text-[#60809a] flex justify-between font-bold select-none mb-1 tracking-widest border-b border-[#1c3547]/20 pb-1.5">
                     <span className="w-[25%] text-left">TICKER</span>
-                    <span className="w-[40%] text-left pl-2">VALUE_EUR</span>
+                    <span className="w-[40%] text-left pl-2">VALUE_USD</span>
                     <span className="w-[25%] text-right">CHANGE_24H</span>
                     <span className="w-[10%]"></span>
                   </div>
@@ -403,12 +403,12 @@ function MarketWidget({ onLoadingChange }) {
             <div className="bg-[#090e14] border border-[#1c3547]/30 p-2.5 rounded flex justify-between items-center text-xs lg:text-sm">
               <div>
                 <div className="text-[#60809a] font-bold text-[9px] tracking-widest uppercase">PORTFOLIO_VALUE</div>
-                <div className="text-cyan-100 font-extrabold text-base lg:text-lg">€{totalCurrentValSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-cyan-100 font-extrabold text-base lg:text-lg">${totalCurrentValSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               </div>
               <div className="text-right">
                 <div className="text-[#60809a] font-bold text-[9px] tracking-widest uppercase">TOTAL_RETURN</div>
                 <div className={`font-extrabold text-xs lg:text-sm ${globalProfitLossUSD >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                  {globalProfitLossUSD >= 0 ? '+' : ''}€{globalProfitLossUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({globalProfitLossUSD >= 0 ? '+' : ''}{globalProfitLossPct.toFixed(2)}%)
+                  {globalProfitLossUSD >= 0 ? '+' : ''}${globalProfitLossUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({globalProfitLossUSD >= 0 ? '+' : ''}{globalProfitLossPct.toFixed(2)}%)
                 </div>
               </div>
             </div>
@@ -463,7 +463,7 @@ function MarketWidget({ onLoadingChange }) {
                 />
                 <input
                   type="text"
-                  placeholder="PRICE_EUR"
+                  placeholder="PRICE_USD"
                   value={portPrice}
                   onChange={(e) => {
                     setPortPrice(e.target.value)
@@ -515,7 +515,7 @@ function MarketWidget({ onLoadingChange }) {
                 />
                 <input
                   type="text"
-                  placeholder="PRICE_EUR"
+                  placeholder="PRICE_USD"
                   value={sellPrice}
                   onChange={(e) => {
                     setSellPrice(e.target.value)
@@ -549,7 +549,7 @@ function MarketWidget({ onLoadingChange }) {
                   <div className="text-xs text-[#60809a] flex justify-between font-bold select-none mb-1.5 tracking-widest border-b border-[#1c3547]/20 pb-1.5">
                     <span className="w-[22%] text-left">TICKER</span>
                     <span className="w-[23%] text-center">SHARES</span>
-                    <span className="w-[27%] text-center">VALUE_EUR</span>
+                    <span className="w-[27%] text-center">VALUE_USD</span>
                     <span className="w-[20%] text-right">RETURN%</span>
                     <span className="w-[8%]"></span>
                   </div>
@@ -558,7 +558,7 @@ function MarketWidget({ onLoadingChange }) {
                     <div key={h.symbol} className="flex justify-between items-center text-xs lg:text-sm">
                       <span className="text-[#60809a] font-bold w-[22%] text-left whitespace-nowrap overflow-hidden text-ellipsis">[ {h.symbol} ]</span>
                       <span className="w-[23%] text-center text-cyan-200 font-semibold truncate" title={h.qty}>{h.qty}</span>
-                      <span className="w-[27%] text-center text-cyan-100 font-semibold truncate">€{h.currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="w-[27%] text-center text-cyan-100 font-semibold truncate">${h.currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       <span className={`font-extrabold tracking-wider text-right w-[20%] ${h.profitLossUSD >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
                         {h.profitLossUSD >= 0 ? '+' : ''}{h.profitLossPct.toFixed(1)}%
                       </span>

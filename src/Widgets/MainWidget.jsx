@@ -4,7 +4,19 @@ const TEXT_COLORS = [
   { key: 'cyan', label: 'CYAN', hex: '#22e3ff' },
   { key: 'amber', label: 'AMBER', hex: '#f2984a' },
   { key: 'emerald', label: 'EMERALD', hex: '#4ade80' },
-  { key: 'red', label: 'RED', hex: '#f5365c' },
+  { key: 'red', label: 'RED', hex: '#ff1414' },
+]
+
+// `family` is the bare name used to detect what's under the caret (matched against
+// getComputedStyle, which always reports the first family unquoted-and-lowercased).
+// `stack` is what actually gets applied, with a generic fallback in case the webfont
+// hasn't loaded yet. Times New Roman ships with the OS, so it needs no <link> import;
+// the other three are loaded from Google Fonts in index.html.
+const FONT_FAMILIES = [
+  { key: 'orbitron', label: 'ORBITRON', family: 'Orbitron', stack: 'Orbitron, sans-serif' },
+  { key: 'roboto-mono', label: 'ROBOTO MONO', family: 'Roboto Mono', stack: 'Roboto Mono, monospace' },
+  { key: 'montserrat', label: 'MONTSERRAT', family: 'Montserrat', stack: 'Montserrat, sans-serif' },
+  { key: 'times', label: 'TIMES NEW ROMAN', family: 'Times New Roman', stack: "Times New Roman, Times, serif" },
 ]
 
 const DEFAULT_FONT_SIZE = 16
@@ -19,6 +31,20 @@ function rgbToHex(rgbStr) {
   return `#${toHex(match[1])}${toHex(match[2])}${toHex(match[3])}`
 }
 
+// WebKit's execCommand('foreColor', ...) under styleWithCSS bakes a literal caret-color
+// declaration into the span it creates for a collapsed selection's "future typing" state
+// — an internal implementation detail of how it previews the pending color, not something
+// this code ever asks for. Left in the DOM, that stale value wins over the live caret-color
+// bound on the editable root (a descendant's inline style always beats an ancestor's), which
+// is exactly what made the caret show a color disconnected from anything actually being
+// typed. Run after every edit so the root's reactive binding is always what's shown.
+function stripStrayCaretColor(root) {
+  root.querySelectorAll('[style*="caret-color"]').forEach(el => {
+    el.style.removeProperty('caret-color')
+    if (!el.getAttribute('style')) el.removeAttribute('style')
+  })
+}
+
 function MainWidget() {
   const editableRef = useRef(null)
   const colorMenuRef = useRef(null)
@@ -29,6 +55,7 @@ function MainWidget() {
   // the user was."
   const savedRangeRef = useRef(null)
   const lastAppliedSizeRef = useRef(DEFAULT_FONT_SIZE)
+  const fontMenuRef = useRef(null)
   // While true, selectionchange events are known to be trailing side effects of our own
   // execCommand calls rather than genuine user action — the toolbar's displayed size/color
   // must ignore them, or the number we just applied gets clobbered back to the old value
@@ -40,6 +67,8 @@ function MainWidget() {
   const [fontSizeInput, setFontSizeInput] = useState(DEFAULT_FONT_SIZE)
   const [activeColorHex, setActiveColorHex] = useState(DEFAULT_COLOR)
   const [isColorMenuOpen, setIsColorMenuOpen] = useState(false)
+  const [activeFontFamily, setActiveFontFamily] = useState(null)
+  const [isFontMenuOpen, setIsFontMenuOpen] = useState(false)
 
   // One-time init: load saved rich text, migrating the old plain-text key if this is
   // the first time this widget runs the rich-text version.
@@ -59,6 +88,8 @@ function MainWidget() {
         editable.appendChild(span)
       }
     }
+    stripStrayCaretColor(editable)
+    localStorage.setItem('dashboardMainRichText', editable.innerHTML)
     setCharCount(editable.textContent.length)
   }, [])
 
@@ -114,6 +145,7 @@ function MainWidget() {
     const editable = editableRef.current
     if (!editable) return
     convertLegacyFontTags()
+    stripStrayCaretColor(editable)
     localStorage.setItem('dashboardMainRichText', editable.innerHTML)
     setCharCount(editable.textContent.length)
   }, [convertLegacyFontTags])
@@ -151,6 +183,10 @@ function MainWidget() {
     if (!isNaN(size)) setFontSizeInput(Math.round(size))
     const hex = rgbToHex(computed.color)
     if (hex) setActiveColorHex(hex)
+
+    const firstFamily = computed.fontFamily.split(',')[0].replace(/["']/g, '').trim().toLowerCase()
+    const familyMatch = FONT_FAMILIES.find(f => f.family.toLowerCase() === firstFamily)
+    setActiveFontFamily(familyMatch ? familyMatch.key : null)
   }, [])
 
   useEffect(() => {
@@ -168,6 +204,17 @@ function MainWidget() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isColorMenuOpen])
+
+  useEffect(() => {
+    if (!isFontMenuOpen) return
+    const handleClickOutside = (e) => {
+      if (fontMenuRef.current && !fontMenuRef.current.contains(e.target)) {
+        setIsFontMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isFontMenuOpen])
 
   // Focuses the editable box and puts the last known selection back exactly where it
   // was, so a toolbar action always applies to "wherever the user was" rather than
@@ -243,6 +290,23 @@ function MainWidget() {
     })
   }
 
+  // Same execCommand pattern as applyColor above — unlike font size, execCommand's
+  // fontName argument accepts an arbitrary family name directly (no legacy magic-number
+  // tag needed), so styleWithCSS produces a real inline-styled span in one step and gets
+  // the same highlight-preserving, future-typing-state behavior color already has.
+  const applyFontFamily = (fontOption) => {
+    const editable = editableRef.current
+    if (!editable) return
+    withSuppressedToolbarSync(() => {
+      restoreSelection()
+      document.execCommand('styleWithCSS', false, true)
+      document.execCommand('fontName', false, fontOption.stack)
+      setActiveFontFamily(fontOption.key)
+      setIsFontMenuOpen(false)
+      persist()
+    })
+  }
+
   return (
     <div className="p-4 flex-grow flex flex-col justify-between overflow-hidden font-sans">
       <div className="flex flex-col gap-2 flex-grow my-2 overflow-hidden">
@@ -291,7 +355,7 @@ function MainWidget() {
           <div className="relative" ref={colorMenuRef}>
             <button
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setIsColorMenuOpen(v => !v)}
+              onClick={() => { setIsColorMenuOpen(v => !v); setIsFontMenuOpen(false) }}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded border border-[#1c3547] text-[10px] font-bold text-[#60809a] hover:text-cyan-400 transition-colors cursor-pointer"
             >
               <span
@@ -320,6 +384,41 @@ function MainWidget() {
               </div>
             )}
           </div>
+
+          <div className="relative" ref={fontMenuRef}>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { setIsFontMenuOpen(v => !v); setIsColorMenuOpen(false) }}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded border border-[#1c3547] text-[10px] font-bold text-[#60809a] hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              <span
+                className="text-[11px] leading-none"
+                style={{ fontFamily: FONT_FAMILIES.find(f => f.key === activeFontFamily)?.stack }}
+              >
+                Aa
+              </span>
+              <span className="text-[8px]">▾</span>
+            </button>
+            {isFontMenuOpen && (
+              <div className="absolute top-full mt-1 left-0 z-20 bg-slate-950/95 border border-cyan-500/20 backdrop-blur-md rounded p-1.5 flex flex-col gap-1 w-40">
+                {FONT_FAMILIES.map(f => (
+                  <button
+                    key={f.key}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyFontFamily(f)}
+                    style={{ fontFamily: f.stack }}
+                    className={`px-2 py-1 rounded text-[10px] font-bold text-left transition-colors cursor-pointer ${
+                      activeFontFamily === f.key
+                        ? 'bg-[#132533] text-cyan-200'
+                        : 'text-[#60809a] hover:text-cyan-400 hover:bg-[#132533]/50'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="relative w-full h-full overflow-hidden">
@@ -337,7 +436,7 @@ function MainWidget() {
             suppressContentEditableWarning
             onInput={persist}
             className="w-full h-full bg-[#090e14]/50 border border-[#1c3547] p-3 rounded font-bold focus:outline-none focus:border-[#00d2ff] focus:shadow-[0_0_10px_rgba(0,210,255,0.08)] overflow-auto leading-relaxed transition-colors duration-300 font-sans"
-            style={{ fontSize: `${DEFAULT_FONT_SIZE}px`, color: DEFAULT_COLOR }}
+            style={{ fontSize: `${DEFAULT_FONT_SIZE}px`, color: DEFAULT_COLOR, caretColor: activeColorHex }}
           />
         </div>
       </div>
