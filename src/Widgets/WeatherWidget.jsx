@@ -169,7 +169,7 @@ function WeatherWidget({ onLoadingChange }) {
               <span>HI / LO</span>
               <span>COND</span>
             </div>
-            {weather.forecast.map((item, index) => {
+            {weather.forecast.slice(0, visibleDaysCount).map((item, index) => {
               const isHighlighted = index === 1;
               return (
                 <div
