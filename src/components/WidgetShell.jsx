@@ -14,6 +14,7 @@ const WidgetShell = React.forwardRef(function WidgetShell(
     onDock,
     onFocus,
     onDoubleClickHeader,
+    headerActions,
     children,
     className = '',
     style,
@@ -45,7 +46,12 @@ const WidgetShell = React.forwardRef(function WidgetShell(
               }`}></span>              
               <span>{title}</span>
             </div>
-            <div className="flex gap-1 text-[clamp(8px,2.2cqh,11px)]">
+            <div className="flex items-center gap-1 text-[clamp(8px,2.2cqh,11px)]">
+              {headerActions && (
+                <span onClick={(e) => e.stopPropagation()} className="flex items-center">
+                  {headerActions}
+                </span>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onDock() }}
                 className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"

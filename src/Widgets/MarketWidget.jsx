@@ -1,22 +1,105 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 // Load secure API key from local environment configuration
 const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
 
-function MarketWidget({ onLoadingChange }) {
+// Strips currency symbols/whitespace and normalizes a European decimal comma (e.g. "0,26")
+// to a dot — the comma must survive the symbol strip so this conversion has something to
+// act on, otherwise "0,26" silently becomes "026" and parses as 26.
+function sanitizeInput(val) {
+  return val.replace(/[$€₺\s]/g, '').replace(',', '.')
+}
+
+// Live quantity preview under the amount field — trimmed to 8 decimals so a repeating
+// float tail (e.g. amount/price landing on 0.1999999999999998) doesn't show as noise.
+function formatQtyPreview(qty) {
+  return qty.toLocaleString('en-US', { maximumFractionDigits: 8 })
+}
+
+// Holdings are derived by replaying the recent transaction log onto a baseline, rather than
+// mutated directly — that's what lets editing or deleting a transaction correctly "redo" its
+// effect on the portfolio (see the transaction-log state below for why the log itself is
+// capped at 6 entries). Same weighted-average-cost-on-buy / qty-reduction-on-sell math the
+// old direct-mutation handlers already used, just applied as a fold over the log instead of
+// as one-off state updates.
+function replayHoldings(baseline, transactions) {
+  const holdings = baseline.map(h => ({ ...h }))
+  for (const tx of transactions) {
+    const idx = holdings.findIndex(h => h.symbol === tx.symbol)
+    if (tx.type === 'buy') {
+      if (idx >= 0) {
+        const existing = holdings[idx]
+        const updatedQty = existing.qty + tx.qty
+        const updatedCost = ((existing.qty * existing.cost) + (tx.qty * tx.price)) / updatedQty
+        holdings[idx] = { symbol: tx.symbol, qty: updatedQty, cost: updatedCost }
+      } else {
+        holdings.push({ symbol: tx.symbol, qty: tx.qty, cost: tx.price })
+      }
+    } else if (tx.type === 'sell' && idx >= 0) {
+      const existing = holdings[idx]
+      const updatedQty = existing.qty - tx.qty
+      // Epsilon guard against float dust (e.g. 1.77e-15) landing just above zero and leaving
+      // a phantom holding instead of fully closing the position.
+      if (updatedQty <= 1e-9) {
+        holdings.splice(idx, 1)
+      } else {
+        holdings[idx] = { ...existing, qty: updatedQty }
+      }
+    }
+  }
+  return holdings
+}
+
+function MarketWidget({ onLoadingChange, isFocused = false }) {
   // Starred market symbols
   const [starredSymbols, setStarredSymbols] = useState(() => {
     const saved = localStorage.getItem('starredSymbols')
     return saved ? JSON.parse(saved) : ['TSLA', 'AAPL', 'MSFT', 'NVDA']
   })
 
-  // Active Portfolio holdings state
-  const [holdings, setHoldings] = useState(() => {
-    const saved = localStorage.getItem('dashboardHoldings')
-    return saved ? JSON.parse(saved) : [
+  // Holdings as of the start of the current transaction log — advances forward only when
+  // the log overflows past 6 entries (see addTransaction), absorbing the oldest transaction
+  // so it stops being individually editable while keeping its portfolio effect intact.
+  const [holdingsBaseline, setHoldingsBaseline] = useState(() => {
+    const saved = localStorage.getItem('dashboardHoldingsBaseline')
+    if (saved) return JSON.parse(saved)
+    // First run of the transaction-log version — the existing aggregate holdings (built up
+    // from whatever trades happened before this feature existed, with no per-trade record
+    // kept) become the starting baseline. Only trades made from here on get logged.
+    const legacyHoldings = localStorage.getItem('dashboardHoldings')
+    return legacyHoldings ? JSON.parse(legacyHoldings) : [
       { symbol: 'TSLA', qty: 10, cost: 280.50 },
       { symbol: 'AAPL', qty: 15, cost: 185.20 }
     ]
+  })
+
+  // Recent buy/sell log, oldest first (for replay order) — capped at 6 (see addTransaction).
+  const [transactions, setTransactions] = useState(() => {
+    const saved = localStorage.getItem('dashboardTransactions')
+    return saved ? JSON.parse(saved) : []
+  })
+
+  // The last up-to-2 transactions folded out of the log, oldest-fold-first, each paired with
+  // the baseline snapshot from just before it was folded — lets handleDeleteTransaction pull
+  // the most recently folded one back in (restoring that exact baseline) so deleting a
+  // transaction doesn't just shrink the log below 6. Capped at 2 per the user's request; a
+  // fold older than the last 2 is permanently baked into the baseline and can't come back.
+  const [foldedHistory, setFoldedHistory] = useState(() => {
+    const saved = localStorage.getItem('dashboardFoldedHistory')
+    return saved ? JSON.parse(saved) : []
+  })
+
+  // Memoized so this only gets a new array reference when the log or baseline actually
+  // change — recomputing (and thus creating a new reference) on every unrelated re-render
+  // would re-trigger the market-data polling effect below on every render too, since it
+  // depends on `holdings`.
+  const holdings = useMemo(() => replayHoldings(holdingsBaseline, transactions), [holdingsBaseline, transactions])
+
+  const [editingTxId, setEditingTxId] = useState(null)
+  const [editingTxDraft, setEditingTxDraft] = useState(null)
+  const [isTxLogCollapsed, setIsTxLogCollapsed] = useState(() => {
+    const saved = localStorage.getItem('dashboardTxLogCollapsed')
+    return saved ? JSON.parse(saved) : false
   })
 
   // Live market data
@@ -27,15 +110,17 @@ function MarketWidget({ onLoadingChange }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchError, setSearchError] = useState('')
 
-  // Portfolio Input states
+  // Portfolio Input states — quantity is never typed directly; the user enters price/share
+  // (read straight off their brokerage's own history, already exact) and total amount, and
+  // quantity is derived from those (see portComputedQty/sellComputedQty below).
   const [portTicker, setPortTicker] = useState('')
-  const [portQty, setPortQty] = useState('')
   const [portPrice, setPortPrice] = useState('')
+  const [portAmount, setPortAmount] = useState('')
   const [portError, setPortError] = useState('')
 
   const [sellTicker, setSellTicker] = useState('')
-  const [sellQty, setSellQty] = useState('')
   const [sellPrice, setSellPrice] = useState('')
+  const [sellAmount, setSellAmount] = useState('')
   const [sellError, setSellError] = useState('')
   const [portfolioMode, setPortfolioMode] = useState('buy') // 'buy' or 'sell'
 
@@ -56,8 +141,20 @@ function MarketWidget({ onLoadingChange }) {
   }, [starredSymbols])
 
   useEffect(() => {
-    localStorage.setItem('dashboardHoldings', JSON.stringify(holdings))
-  }, [holdings])
+    localStorage.setItem('dashboardHoldingsBaseline', JSON.stringify(holdingsBaseline))
+  }, [holdingsBaseline])
+
+  useEffect(() => {
+    localStorage.setItem('dashboardTransactions', JSON.stringify(transactions))
+  }, [transactions])
+
+  useEffect(() => {
+    localStorage.setItem('dashboardFoldedHistory', JSON.stringify(foldedHistory))
+  }, [foldedHistory])
+
+  useEffect(() => {
+    localStorage.setItem('dashboardTxLogCollapsed', JSON.stringify(isTxLogCollapsed))
+  }, [isTxLogCollapsed])
 
   // Stocks data polling
   useEffect(() => {
@@ -118,8 +215,14 @@ function MarketWidget({ onLoadingChange }) {
     }
   }, [isMarketFadingOut])
 
-  // Portfolio tabs Auto-rotation cycle
+  // Portfolio tabs Auto-rotation cycle — suppressed entirely while focused. The focal
+  // overlay is where the buy/sell forms and transaction log actually get used, and this
+  // timer flipping the tab away mid-entry was a real, repeatedly-hit source of lost
+  // in-progress form data; disabling it here is strictly additive to that, not a fix for a
+  // currently-open bug.
   useEffect(() => {
+    if (isFocused) return
+
     const timeSinceClick = Date.now() - lastManualMarketClick
     const delayUntilAutoCycle = Math.max(0, 20000 - timeSinceClick)
     let cycleInterval
@@ -142,7 +245,7 @@ function MarketWidget({ onLoadingChange }) {
       clearTimeout(startAutoCycleTimeout)
       if (cycleInterval) clearInterval(cycleInterval)
     }
-  }, [lastManualMarketClick])
+  }, [lastManualMarketClick, isFocused])
 
   const handleManualMarketChange = (category) => {
     if (category === displayMarketTab) return
@@ -154,6 +257,7 @@ function MarketWidget({ onLoadingChange }) {
   }
 
   const registerMarketInteraction = () => {
+    // eslint-disable-next-line react-hooks/purity -- only ever called from onClick/onChange/onFocus handlers, never during render
     setLastManualMarketClick(Date.now())
   }
 
@@ -186,13 +290,92 @@ function MarketWidget({ onLoadingChange }) {
     setStarredSymbols(prev => prev.filter(s => s !== sym))
   }
 
-  const handleAddHolding = () => {
-    const sanitizeInput = (val) => val.replace(/[$,€,₺,\s]/g, '').replace(',', '.')
-    const sym = portTicker.trim().toUpperCase()
-    const qty = parseFloat(sanitizeInput(portQty))
-    const price = parseFloat(sanitizeInput(portPrice))
+  // Appends to the log; once it grows past 6, the oldest entry is folded into the baseline
+  // (its portfolio effect is preserved) and dropped from the editable/visible log — reading
+  // holdingsBaseline/transactions directly off the current render's closure rather than via
+  // functional updaters, since nesting a setHoldingsBaseline call inside a setTransactions
+  // updater would risk double-applying the fold under React StrictMode's double-invoke.
+  const addTransaction = (txInput) => {
+    // eslint-disable-next-line react-hooks/purity -- addTransaction is only ever invoked from click handlers / fetch-success callbacks, never during render, so Date.now() here isn't actually reachable from a render pass
+    const newTx = { id: crypto.randomUUID(), timestamp: Date.now(), ...txInput }
+    const updated = [...transactions, newTx]
+    if (updated.length > 6) {
+      const [oldest, ...rest] = updated
+      const nextFolded = [...foldedHistory, { transaction: oldest, previousBaseline: holdingsBaseline }]
+      setFoldedHistory(nextFolded.length > 2 ? nextFolded.slice(nextFolded.length - 2) : nextFolded)
+      setHoldingsBaseline(replayHoldings(holdingsBaseline, [oldest]))
+      setTransactions(rest)
+    } else {
+      setTransactions(updated)
+    }
+  }
 
-    if (!sym || isNaN(qty) || qty <= 0 || isNaN(price) || price <= 0) {
+  // Deleting doesn't just shrink the log — if a transaction was folded out to make room
+  // (see addTransaction), the most recently folded one is pulled back in at the oldest slot
+  // (visually the bottom, since the log renders newest-first) so the list stays full. Works
+  // regardless of which transaction was deleted, since it's restoring what fell off the far
+  // end, not undoing the specific deletion.
+  const handleDeleteTransaction = (id) => {
+    const remaining = transactions.filter(t => t.id !== id)
+    if (foldedHistory.length > 0) {
+      const entry = foldedHistory[foldedHistory.length - 1]
+      setHoldingsBaseline(entry.previousBaseline)
+      setTransactions([entry.transaction, ...remaining])
+      setFoldedHistory(foldedHistory.slice(0, -1))
+    } else {
+      setTransactions(remaining)
+    }
+  }
+
+  const startEditTransaction = (tx) => {
+    // Same reason the buy/sell form inputs already call this: without it, the 20s
+    // watchlist/portfolio auto-rotation can flip the tab away mid-edit (unmounting this
+    // whole section) and silently discard whatever was being typed.
+    registerMarketInteraction()
+    setEditingTxId(tx.id)
+    // Same price + amount entry as the buy/sell forms, not qty directly — amount is
+    // back-derived from the stored qty*price so editing without touching either field is a
+    // no-op, and re-typing amount recomputes qty the same way a fresh entry would.
+    setEditingTxDraft({ type: tx.type, symbol: tx.symbol, price: String(tx.price), amount: (tx.qty * tx.price).toFixed(2) })
+  }
+
+  const cancelEditTransaction = () => {
+    setEditingTxId(null)
+    setEditingTxDraft(null)
+  }
+
+  const isEditingTxDraftValid = editingTxDraft
+    && editingTxDraft.symbol.trim()
+    && !isNaN(parseFloat(sanitizeInput(editingTxDraft.price))) && parseFloat(sanitizeInput(editingTxDraft.price)) > 0
+    && !isNaN(parseFloat(sanitizeInput(editingTxDraft.amount))) && parseFloat(sanitizeInput(editingTxDraft.amount)) > 0
+
+  const editComputedQty = (() => {
+    if (!editingTxDraft) return null
+    const price = parseFloat(sanitizeInput(editingTxDraft.price))
+    const amount = parseFloat(sanitizeInput(editingTxDraft.amount))
+    return (!isNaN(price) && price > 0 && !isNaN(amount) && amount > 0) ? amount / price : null
+  })()
+
+  const saveEditTransaction = () => {
+    if (!isEditingTxDraftValid) return
+    const sym = editingTxDraft.symbol.trim().toUpperCase()
+    const price = parseFloat(sanitizeInput(editingTxDraft.price))
+    const amount = parseFloat(sanitizeInput(editingTxDraft.amount))
+    const qty = amount / price
+    setTransactions(prev => prev.map(t =>
+      t.id === editingTxId ? { ...t, type: editingTxDraft.type, symbol: sym, qty, price } : t
+    ))
+    setEditingTxId(null)
+    setEditingTxDraft(null)
+  }
+
+  const handleAddHolding = () => {
+    const sym = portTicker.trim().toUpperCase()
+    const price = parseFloat(sanitizeInput(portPrice))
+    const amount = parseFloat(sanitizeInput(portAmount))
+    const qty = amount / price
+
+    if (!sym || isNaN(price) || price <= 0 || isNaN(amount) || amount <= 0) {
       setPortError('VAL_ERR // INVALID_TRANSACTION')
       return
     }
@@ -205,22 +388,10 @@ function MarketWidget({ onLoadingChange }) {
       })
       .then(data => {
         if (!data || data.c === 0 || data.c === null) throw new Error()
-        setHoldings(prev => {
-          const existingIndex = prev.findIndex(h => h.symbol === sym)
-          if (existingIndex >= 0) {
-            const existing = prev[existingIndex]
-            const updatedQty = existing.qty + qty
-            const updatedCostBasis = ((existing.qty * existing.cost) + (qty * price)) / updatedQty
-            const copy = [...prev]
-            copy[existingIndex] = { symbol: sym, qty: updatedQty, cost: updatedCostBasis }
-            return copy
-          } else {
-            return [...prev, { symbol: sym, qty, cost: price }]
-          }
-        })
+        addTransaction({ type: 'buy', symbol: sym, qty, price })
         setPortTicker('')
-        setPortQty('')
         setPortPrice('')
+        setPortAmount('')
         setPortError('')
       })
       .catch(() => {
@@ -228,13 +399,14 @@ function MarketWidget({ onLoadingChange }) {
       })
   }
   const handleSellHolding = () => {
-    const sanitizeInput = (val) => val.replace(/[$,€,₺,\s]/g, '').replace(',', '.')
     const sym = sellTicker.trim().toUpperCase()
-    const qty = parseFloat(sanitizeInput(sellQty))
+    const price = parseFloat(sanitizeInput(sellPrice))
+    const amount = parseFloat(sanitizeInput(sellAmount))
+    let qty = amount / price
 
     const existing = holdings.find(h => h.symbol === sym)
 
-    if (!sym || isNaN(qty) || qty <= 0) {
+    if (!sym || isNaN(price) || price <= 0 || isNaN(amount) || amount <= 0) {
       setSellError('VAL_ERR // INVALID_TRANSACTION')
       return
     }
@@ -242,29 +414,69 @@ function MarketWidget({ onLoadingChange }) {
       setSellError('TKR_ERR // NOT_IN_PORTFOLIO')
       return
     }
+    // Amount-based entry (especially the SELL ALL shortcut, which rounds the auto-filled
+    // amount to the cent) can land a hair above the held quantity from pure float/rounding
+    // drift — snap it to the exact held quantity when within a tiny relative tolerance so a
+    // genuine full-close isn't rejected or left with a phantom fractional-share residue.
+    if (qty > existing.qty && qty <= existing.qty * 1.0001) {
+      qty = existing.qty
+    }
     if (qty > existing.qty) {
       setSellError(`QTY_ERR // ONLY ${existing.qty} SHARES HELD`)
       return
     }
 
-    setHoldings(prev => {
-      const remaining = existing.qty - qty
-      if (remaining <= 0) {
-        return prev.filter(h => h.symbol !== sym)
-      }
-      return prev.map(h =>
-        h.symbol === sym ? { ...h, qty: remaining } : h
-      )
-    })
+    addTransaction({ type: 'sell', symbol: sym, qty, price })
 
     setSellTicker('')
-    setSellQty('')
     setSellPrice('')
+    setSellAmount('')
     setSellError('')
   }
-  const handleRemoveHolding = (sym) => {
-    setHoldings(prev => prev.filter(h => h.symbol !== sym))
+  // "SELL ALL" shortcut — fills the amount field from the currently-held quantity × the
+  // price the user already entered, so closing a position out fully doesn't require the
+  // user to do that multiplication themselves (and risk a mismatch with their real shares).
+  const handleSellAll = () => {
+    registerMarketInteraction()
+    const sym = sellTicker.trim().toUpperCase()
+    const price = parseFloat(sanitizeInput(sellPrice))
+    const existing = holdings.find(h => h.symbol === sym)
+
+    if (!sym || !existing) {
+      setSellError('TKR_ERR // NOT_IN_PORTFOLIO')
+      return
+    }
+    if (isNaN(price) || price <= 0) {
+      setSellError('VAL_ERR // ENTER_PRICE_FIRST')
+      return
+    }
+    setSellAmount((existing.qty * price).toFixed(2))
+    setSellError('')
   }
+  // Closes the position out entirely as a sell transaction at the current market price (or
+  // cost basis if a live price isn't available) — same effect the old direct-removal button
+  // had, but now flowing through the log so it's just as editable/undoable as any other trade.
+  const handleRemoveHolding = (sym) => {
+    const existing = holdings.find(h => h.symbol === sym)
+    if (!existing) return
+    const rawTickerData = marketData[sym]
+    const currentPrice = rawTickerData && !rawTickerData.error
+      ? parseFloat(rawTickerData.price.replace(/[^0-9.]/g, ''))
+      : existing.cost
+    addTransaction({ type: 'sell', symbol: sym, qty: existing.qty, price: currentPrice })
+  }
+
+  const portPriceNum = parseFloat(sanitizeInput(portPrice))
+  const portAmountNum = parseFloat(sanitizeInput(portAmount))
+  const portComputedQty = (!isNaN(portPriceNum) && portPriceNum > 0 && !isNaN(portAmountNum) && portAmountNum > 0)
+    ? portAmountNum / portPriceNum
+    : null
+
+  const sellPriceNum = parseFloat(sanitizeInput(sellPrice))
+  const sellAmountNum = parseFloat(sanitizeInput(sellAmount))
+  const sellComputedQty = (!isNaN(sellPriceNum) && sellPriceNum > 0 && !isNaN(sellAmountNum) && sellAmountNum > 0)
+    ? sellAmountNum / sellPriceNum
+    : null
 
   const isMarketContentHidden = animateMarket ? isMarketFadingOut : false
 
@@ -452,21 +664,23 @@ function MarketWidget({ onLoadingChange }) {
                 />
                 <input
                   type="text"
-                  placeholder="QTY"
-                  value={portQty}
-                  onChange={(e) => {
-                    setPortQty(e.target.value)
-                    registerMarketInteraction()
-                  }}
-                  onFocus={registerMarketInteraction}
-                  className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-sm px-2 py-1 rounded focus:outline-none focus:border-[#00d2ff] w-14"
-                />
-                <input
-                  type="text"
-                  placeholder="PRICE_USD"
+                  placeholder="PRICE/SHARE"
                   value={portPrice}
                   onChange={(e) => {
                     setPortPrice(e.target.value)
+                    registerMarketInteraction()
+                  }}
+                  onFocus={registerMarketInteraction}
+                  className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-sm px-2 py-1 rounded focus:outline-none focus:border-[#00d2ff] flex-grow"
+                />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="AMOUNT_USD"
+                  value={portAmount}
+                  onChange={(e) => {
+                    setPortAmount(e.target.value)
                     registerMarketInteraction()
                   }}
                   onFocus={registerMarketInteraction}
@@ -479,6 +693,9 @@ function MarketWidget({ onLoadingChange }) {
                 >
                   ADD
                 </button>
+              </div>
+              <div className="text-[10px] text-[#60809a] tracking-wider min-h-[14px]">
+                {portComputedQty !== null && <>QTY ≈ {formatQtyPreview(portComputedQty)}</>}
               </div>
               {portError && (
                 <div className="text-[10px] text-[#d07018] tracking-wider animate-pulse font-bold uppercase">
@@ -504,21 +721,23 @@ function MarketWidget({ onLoadingChange }) {
                 />
                 <input
                   type="text"
-                  placeholder="QTY"
-                  value={sellQty}
-                  onChange={(e) => {
-                    setSellQty(e.target.value)
-                    registerMarketInteraction()
-                  }}
-                  onFocus={registerMarketInteraction}
-                  className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-sm px-2 py-1 rounded focus:outline-none focus:border-[#d07018] w-14"
-                />
-                <input
-                  type="text"
-                  placeholder="PRICE_USD"
+                  placeholder="PRICE/SHARE"
                   value={sellPrice}
                   onChange={(e) => {
                     setSellPrice(e.target.value)
+                    registerMarketInteraction()
+                  }}
+                  onFocus={registerMarketInteraction}
+                  className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-sm px-2 py-1 rounded focus:outline-none focus:border-[#d07018] flex-grow"
+                />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="AMOUNT_USD"
+                  value={sellAmount}
+                  onChange={(e) => {
+                    setSellAmount(e.target.value)
                     registerMarketInteraction()
                   }}
                   onFocus={registerMarketInteraction}
@@ -526,11 +745,21 @@ function MarketWidget({ onLoadingChange }) {
                   className="bg-[#090e14] border border-[#1c3547] text-cyan-100 text-sm px-2 py-1 rounded focus:outline-none focus:border-[#d07018] flex-grow"
                 />
                 <button
+                  onClick={handleSellAll}
+                  title="Fill amount from full held quantity × price"
+                  className="bg-[#090e14] hover:bg-[#1c1410] active:bg-[#d07018] active:text-black border border-[#d07018]/30 text-[#d07018]/80 hover:text-[#d07018] text-[10px] font-bold px-2 rounded transition-all cursor-pointer"
+                >
+                  ALL
+                </button>
+                <button
                   onClick={handleSellHolding}
                   className="bg-[#2a1410] hover:bg-[#3a1c15] active:bg-[#d07018] active:text-black border border-[#d07018]/40 text-[#d07018] text-xs px-3 rounded font-bold transition-all cursor-pointer"
                 >
                   SELL
                 </button>
+              </div>
+              <div className="text-[10px] text-[#60809a] tracking-wider min-h-[14px]">
+                {sellComputedQty !== null && <>QTY ≈ {formatQtyPreview(sellComputedQty)}</>}
               </div>
               {sellError && (
                 <div className="text-[10px] text-rose-500 tracking-wider animate-pulse font-bold uppercase">
@@ -573,6 +802,140 @@ function MarketWidget({ onLoadingChange }) {
                 </>
               )}
             </div>
+
+            {isFocused && (
+              <div className="shrink-0 border-t border-[#1c3547]/20 pt-2.5">
+                <div className="flex justify-between items-center mb-1.5">
+                  <div className="text-[9px] font-bold tracking-widest text-[#3d5b73]">// TRANSACTION_LOG</div>
+                  <button
+                    onClick={() => setIsTxLogCollapsed(v => !v)}
+                    className="text-[9px] font-bold tracking-widest text-[#60809a] hover:text-cyan-400 cursor-pointer focus:outline-none"
+                  >
+                    {isTxLogCollapsed ? '[ SHOW ]' : '[ HIDE ]'}
+                  </button>
+                </div>
+                {isTxLogCollapsed ? null : transactions.length === 0 ? (
+                  <div className="text-[10px] text-cyan-700 italic select-none py-2 text-center">
+                    NO_RECENT_TRANSACTIONS
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-[9px] text-[#60809a] flex justify-between font-bold select-none mb-1 tracking-widest">
+                      <span className="w-[13%] text-center">TYPE</span>
+                      <span className="w-[18%] text-left">TICKER</span>
+                      <span className="w-[14%] text-center">QTY</span>
+                      <span className="w-[18%] text-center">PRICE/SH</span>
+                      <span className="w-[22%] text-center">AMOUNT</span>
+                      <span className="w-[15%]"></span>
+                    </div>
+                    <div className="space-y-1">
+                      {[...transactions].reverse().map(tx => (
+                        editingTxId === tx.id ? (
+                          <div key={tx.id} className="flex flex-col gap-1 bg-[#0e1a24]/60 border border-cyan-500/30 rounded px-1.5 py-1.5">
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={editingTxDraft.type}
+                                onChange={(e) => { setEditingTxDraft(d => ({ ...d, type: e.target.value })); registerMarketInteraction() }}
+                                onFocus={registerMarketInteraction}
+                                className="bg-[#090e14] border border-[#1c3547] text-[10px] text-cyan-100 rounded px-0.5 py-0.5 focus:outline-none"
+                              >
+                                <option value="buy">BUY</option>
+                                <option value="sell">SELL</option>
+                              </select>
+                              <input
+                                type="text"
+                                value={editingTxDraft.symbol}
+                                onChange={(e) => { setEditingTxDraft(d => ({ ...d, symbol: e.target.value })); registerMarketInteraction() }}
+                                onFocus={registerMarketInteraction}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEditTransaction()
+                                  if (e.key === 'Escape') cancelEditTransaction()
+                                }}
+                                className="bg-[#090e14] border border-[#1c3547] text-[10px] text-cyan-100 rounded px-1 py-0.5 w-12 uppercase focus:outline-none"
+                              />
+                              <input
+                                type="text"
+                                value={editingTxDraft.price}
+                                onChange={(e) => { setEditingTxDraft(d => ({ ...d, price: e.target.value })); registerMarketInteraction() }}
+                                onFocus={registerMarketInteraction}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEditTransaction()
+                                  if (e.key === 'Escape') cancelEditTransaction()
+                                }}
+                                placeholder="PRICE/SH"
+                                className="bg-[#090e14] border border-[#1c3547] text-[10px] text-cyan-100 rounded px-1 py-0.5 flex-grow min-w-0 focus:outline-none"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editingTxDraft.amount}
+                                onChange={(e) => { setEditingTxDraft(d => ({ ...d, amount: e.target.value })); registerMarketInteraction() }}
+                                onFocus={registerMarketInteraction}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEditTransaction()
+                                  if (e.key === 'Escape') cancelEditTransaction()
+                                }}
+                                placeholder="AMOUNT"
+                                className="bg-[#090e14] border border-[#1c3547] text-[10px] text-cyan-100 rounded px-1 py-0.5 flex-grow min-w-0 focus:outline-none"
+                              />
+                              <button
+                                onClick={saveEditTransaction}
+                                disabled={!isEditingTxDraftValid}
+                                className="text-emerald-400 hover:text-emerald-300 disabled:text-[#60809a]/30 disabled:cursor-not-allowed text-xs font-bold px-1 cursor-pointer"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={cancelEditTransaction}
+                                className="text-[#60809a] hover:text-rose-500 text-xs font-bold px-1 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="text-[9px] text-[#60809a] tracking-wider">
+                              {editComputedQty !== null && <>QTY ≈ {formatQtyPreview(editComputedQty)}</>}
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={tx.id} className="flex justify-between items-center text-[10px] lg:text-xs">
+                            <span className={`w-[13%] text-center font-bold rounded px-1 py-0.5 ${
+                              tx.type === 'buy' ? 'text-cyan-400 bg-cyan-500/10' : 'text-[#d07018] bg-[#d07018]/10'
+                            }`}>
+                              {tx.type === 'buy' ? 'BUY' : 'SELL'}
+                            </span>
+                            <span className="text-[#60809a] font-bold w-[18%] text-left truncate">[ {tx.symbol} ]</span>
+                            <span className="text-cyan-200 w-[14%] text-center truncate" title={tx.qty}>{tx.qty}</span>
+                            <span className="text-cyan-100 w-[18%] text-center truncate">
+                              ${Number(tx.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-cyan-100 font-semibold w-[22%] text-center truncate">
+                              ${(tx.qty * tx.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="w-[15%] flex justify-end gap-1.5">
+                              <button
+                                onClick={() => startEditTransaction(tx)}
+                                className="text-[#60809a]/50 hover:text-cyan-400 text-[10px] cursor-pointer"
+                                title="EDIT"
+                              >
+                                ✎
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTransaction(tx.id)}
+                                className="text-[#60809a]/50 hover:text-rose-500 text-[10px] font-bold cursor-pointer"
+                                title="DELETE"
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

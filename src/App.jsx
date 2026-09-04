@@ -48,6 +48,8 @@ function App() {
   }
   const [graphScale, setGraphScale] = useState(32)
   const [weatherLoading, setWeatherLoading] = useState(true)
+  const weatherWidgetRef = useRef(null)
+  const [isWeatherRefreshing, setIsWeatherRefreshing] = useState(false)
   const [newsLoading, setNewsLoading] = useState(true)
   const [marketLoading, setMarketLoading] = useState(true)
 
@@ -455,8 +457,25 @@ function App() {
             onDock={() => handleDockWidget('weather')}
             onFocus={() => setFocalWidgetId('weather')}
             onDoubleClickHeader={() => setFocalWidgetId('weather')}
+            headerActions={
+              <button
+                onClick={() => weatherWidgetRef.current?.refresh()}
+                disabled={isWeatherRefreshing}
+                title="FORCE_REFRESH"
+                className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+              >
+                <span className={isWeatherRefreshing ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
+              </button>
+            }
           >
-            {focalWidgetId !== 'weather' && <WeatherWidget onLoadingChange={setWeatherLoading} />}
+            {focalWidgetId !== 'weather' && (
+              <WeatherWidget
+                ref={weatherWidgetRef}
+                onLoadingChange={setWeatherLoading}
+                onRefreshingChange={setIsWeatherRefreshing}
+                showHeaderRefresh={false}
+              />
+            )}
           </WidgetShell>
         )}
 
@@ -755,7 +774,7 @@ function App() {
               {focalWidgetId === 'weather' ? (
                 <WeatherWidget onLoadingChange={setWeatherLoading} />
               ) : focalWidgetId === 'market' ? (
-                <MarketWidget onLoadingChange={setMarketLoading} />
+                <MarketWidget onLoadingChange={setMarketLoading} isFocused />
               ) : focalWidgetId === 'todo' ? (
                 <TodoWidget />
               ) : focalWidgetId === 'calculator' ? (
