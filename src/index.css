@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Both families are already pulled in by index.html for the rich-text widget's font picker —
+   reused here as the app's two structural typefaces rather than loading anything new:
+   Orbitron for titles/labels (geometric, technical), Roboto Mono for live data/readouts. */
+@theme {
+  --font-display: 'Orbitron', ui-sans-serif, sans-serif;
+  --font-hud-mono: 'Roboto Mono', ui-monospace, monospace;
+}
+
 /* Basic React-Grid-Layout spacing rules */
 .react-grid-item.react-grid-placeholder {
   background: rgba(0, 210, 255, 0.05) !important;
@@ -42,6 +50,100 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 210, 255, 0.6) !important; 
+  background: rgba(0, 210, 255, 0.6) !important;
   box-shadow: 0 0 8px rgba(0, 210, 255, 0.4) !important;
+}
+
+/* Faint tech-grid backdrop behind the whole dashboard — visible through the gaps between
+   widgets, evokes a HUD/schematic surface rather than a flat dark page. */
+body {
+  background-color: #090e14;
+  background-image:
+    linear-gradient(rgba(0, 210, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 210, 255, 0.035) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Radar-style status dot: expanding, fading rings echo outward from the dot on a loop.
+   `background-color: inherit` picks up whichever bg-* color class is on the dot itself, so
+   this works for any status color without needing a color prop threaded through. */
+@keyframes hudRadarPing {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.hud-dot {
+  position: relative;
+}
+.hud-dot::before,
+.hud-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background-color: inherit;
+  animation: hudRadarPing 2.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  pointer-events: none;
+}
+.hud-dot::after {
+  animation-delay: 1.2s;
+}
+
+/* Ambient scanline sweep — a faint light band drifting down through a panel on a loop,
+   sized in percent of the panel's own height so it reads consistently across every widget's
+   height rather than needing per-widget tuning. */
+@keyframes hudScan {
+  0% { top: -15%; opacity: 0; }
+  15% { opacity: 0.5; }
+  85% { opacity: 0.5; }
+  100% { top: 115%; opacity: 0; }
+}
+.hud-scanline {
+  position: relative;
+}
+.hud-scanline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 15%;
+  background: linear-gradient(to bottom, transparent, rgba(0, 210, 255, 0.07), transparent);
+  animation: hudScan 8s linear infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Panel surface: a faint top-to-bottom gradient instead of a flat fill, so panels read as
+   lit from above rather than as a solid color swatch. */
+.hud-surface {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(0, 0, 0, 0.1) 60%);
+}
+
+/* Slow drifting horizontal light band under widget headers — a low-key "data is flowing"
+   tell, distinct from the vertical hud-scanline sweep over the panel body. */
+@keyframes hudHeaderFlow {
+  0% { background-position: -120% 0; }
+  100% { background-position: 220% 0; }
+}
+.hud-header-flow {
+  background-image: linear-gradient(90deg, transparent, rgba(0, 210, 255, 0.55), transparent);
+  background-repeat: no-repeat;
+  background-size: 40% 100%;
+  animation: hudHeaderFlow 5s linear infinite;
+}
+
+/* Large, near-invisible rotating radar rings anchored in a back corner of the dashboard —
+   pure ambient depth, evokes the globe/gauge motif from the reference boards without
+   competing with any real content (z-index sits below every widget). */
+@keyframes hudRadarSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.hud-radar-rings {
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+}
+.hud-radar-rings svg {
+  animation: hudRadarSpin 120s linear infinite;
 }

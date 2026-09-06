@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import WidgetErrorBoundary from './WidgetErrorBoundary'
+import ReticleCorner from './ReticleCorner'
 
 const WidgetShell = React.forwardRef(function WidgetShell(
   {
@@ -47,27 +48,35 @@ const WidgetShell = React.forwardRef(function WidgetShell(
       ref={ref}
       data-widget-id={id}
       style={{ ...style, opacity }}
-      className={`${bg} rounded border border-[#1c3547] flex flex-col overflow-hidden ${className}`}
+      className={`${bg} hud-surface relative hud-scanline border border-[#1c3547] flex flex-col overflow-hidden ${className}`}
       {...rest}
     >
+      {/* Targeting-reticle corners — the app's shared "HUD frame" signature, applied here
+          once so every widget (present and future) gets it automatically instead of each
+          needing its own copy (previously only the focus overlay had this). */}
+      <ReticleCorner corner="tl" className="text-cyan-400/70 z-20 m-0.5" />
+      <ReticleCorner corner="tr" className="text-cyan-400/70 z-20 m-0.5" />
+      <ReticleCorner corner="bl" className="text-cyan-400/70 z-20 m-0.5" />
+      <ReticleCorner corner="br" className="text-cyan-400/70 z-20 m-0.5" />
+
       {isPreview ? (
         previewLabel
       ) : (
         <>
           <div
             onDoubleClick={onDoubleClickHeader}
-            className="drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
+            className="relative drag-handle cursor-grab active:cursor-grabbing px-3 py-1.5 bg-[#132533] border-b border-[#1c3547] text-[9px] text-[#60809a] font-bold flex justify-between items-center select-none"
             title="DOUBLE-CLICK HEADER TO ENGAGE TARGET DIALOG FOCUS"
           >
-            <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${
-                loading
-                  ? 'bg-amber-500 animate-pulse'
-                  : `${dotColor || 'bg-[#00d2ff]'} ${dotPulse ? 'animate-pulse' : ''}`
-              }`}></span>
-              <span>{title}</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`hud-dot w-1.5 h-1.5 rounded-full shrink-0 ${
+                  loading
+                    ? 'bg-amber-500 animate-pulse'
+                    : `${dotColor || 'bg-[#00d2ff]'} ${dotPulse ? 'animate-pulse' : ''}`
+                }`}></span>
+              <span className="font-display text-[8.5px] tracking-wide truncate">{title}</span>
             </div>
-            <div className="flex items-center gap-1 text-[clamp(8px,2.2cqh,11px)]">
+            <div className="flex items-center gap-2 text-xs font-hud-mono shrink-0">
               {headerActions && (
                 <span onClick={(e) => e.stopPropagation()} className="flex items-center">
                   {headerActions}
@@ -75,18 +84,22 @@ const WidgetShell = React.forwardRef(function WidgetShell(
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); onDock() }}
-                className="hover:text-amber-500 font-bold focus:outline-none cursor-pointer"
+                className="hover:text-amber-500 leading-none focus:outline-none cursor-pointer"
+                title="DOCK MODULE"
               >
-                [ ⤳ DOCK ]
+                ⤳
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onFocus() }}
-                className="hover:text-cyan-400 font-bold focus:outline-none cursor-pointer"
+                className="hover:text-cyan-400 leading-none focus:outline-none cursor-pointer"
                 title="ENGAGE FOCUS MATRIX"
               >
-                [ ⤖ FOCUS ]
+                ⤖
               </button>
             </div>
+            {/* Slow light band drifting through the header, distinct from the vertical
+                scanline over the panel body below — a low-key "actively fed" tell. */}
+            <div className="absolute left-0 right-0 bottom-0 h-px hud-header-flow"></div>
           </div>
           <WidgetErrorBoundary widgetName={title}>
             {children}

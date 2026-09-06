@@ -368,6 +368,14 @@ function App() {
   const [isGridInteracting, setIsGridInteracting] = useState(false)
   const [previewDockingId, setPreviewDockingId] = useState(null)
 
+  // Live system-clock readout for the top status bar — purely decorative HUD chrome, no
+  // functional behavior depends on it.
+  const [systemTime, setSystemTime] = useState(() => new Date())
+  useEffect(() => {
+    const intervalId = setInterval(() => setSystemTime(new Date()), 1000)
+    return () => clearInterval(intervalId)
+  }, [])
+
   // Archive drawer is now hover-triggered rather than click-toggled: resting the cursor on
   // the corner trigger for ~0.9s opens it, and it stays open for as long as the cursor
   // remains anywhere on the trigger or the drawer itself, closing shortly after it leaves
@@ -650,7 +658,14 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#090e14] text-[#00d2ff] font-sans px-6 pb-6 pt-14 relative overflow-x-hidden font-sans">
-      
+
+      {/* Depth vignette — darkens the viewport's outer edges so the console reads as one
+          enclosed HUD surface instead of a flat page that just stops at the window edge. */}
+      <div
+        className="fixed inset-0 pointer-events-none z-30"
+        style={{ boxShadow: 'inset 0 0 160px rgba(0,0,0,0.55)' }}
+      ></div>
+
       {/* High-Tech Diagnostic Focal Animation Utility CSS Styles (With matching smooth exit fading Zoom) [3] */}
       <style>{`
         @keyframes focalAcquisitionIn {
@@ -714,13 +729,43 @@ function App() {
         }
       `}</style>
 
+      {/* Ambient background radar rings — pure decoration, sits behind every widget (z-0,
+          declared first in DOM) and is mostly clipped off the bottom-right corner, so it
+          only ever peeks through the grid gaps rather than competing with real content. */}
+      <div className="hud-radar-rings -bottom-40 -right-40" aria-hidden="true">
+        <svg width="480" height="480" viewBox="0 0 480 480">
+          <circle cx="240" cy="240" r="238" fill="none" stroke="#00d2ff" strokeWidth="1" />
+          <circle cx="240" cy="240" r="180" fill="none" stroke="#00d2ff" strokeWidth="1" />
+          <circle cx="240" cy="240" r="120" fill="none" stroke="#00d2ff" strokeWidth="1" strokeDasharray="4 6" />
+          <line x1="240" y1="2" x2="240" y2="478" stroke="#00d2ff" strokeWidth="1" />
+          <line x1="2" y1="240" x2="478" y2="240" stroke="#00d2ff" strokeWidth="1" />
+        </svg>
+      </div>
+
+      {/* Top status chrome — brand/system-online tell on the left, live clock on the right
+          (sitting just left of the fullscreen trigger), both riding the same top-4 line the
+          fullscreen button anchors so the whole strip reads as one console readout. */}
+      <div className="fixed top-4 left-6 z-50 flex items-center gap-2 pointer-events-none select-none">
+        <span className="hud-dot w-1.5 h-1.5 rounded-full bg-[#00d2ff]"></span>
+        <span className="font-display text-[11px] tracking-[0.2em] text-cyan-200">P.O.S.E</span>
+        <span className="font-hud-mono text-[9px] text-[#60809a] tracking-widest hidden sm:inline">// SYSTEM_ONLINE</span>
+      </div>
+      <div className="fixed top-4 right-16 z-50 flex flex-col items-end leading-tight pointer-events-none select-none font-hud-mono">
+        <span className="text-[11px] text-cyan-200 tracking-widest">
+          {systemTime.toLocaleTimeString('en-GB', { hour12: false })}
+        </span>
+        <span className="text-[8px] text-[#60809a] tracking-widest">
+          {systemTime.toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()}
+        </span>
+      </div>
+
       {/* Fullscreen trigger — fixed top-right corner, click-to-toggle. Its bottom edge is the
           reference line the workspace's top padding (pt-14 on the root div, see above) is
           set to sit tangent to, now that the old header bar above it is gone. */}
       <button
         onClick={toggleFullscreen}
         title="TOGGLE FULLSCREEN"
-        className="fixed top-4 right-4 z-50 w-9 h-9 flex items-center justify-center rounded border border-[#1c3547] bg-[#090e14]/90 text-[#60809a] hover:text-cyan-400 hover:border-[#00d2ff] transition-all cursor-pointer focus:outline-none"
+        className="fixed top-4 right-4 z-50 w-9 h-9 flex items-center justify-center border border-[#1c3547] bg-[#090e14]/90 text-[#60809a] hover:text-cyan-400 hover:border-[#00d2ff] hover:shadow-[0_0_10px_rgba(0,210,255,0.25)] transition-all cursor-pointer focus:outline-none"
       >
         <span className="text-sm">⤢</span>
       </button>
@@ -995,7 +1040,7 @@ function App() {
         onMouseLeave={handleDockAreaLeave}
         title="HOLD TO OPEN ARCHIVE STATION"
         style={{ transform: `translateY(-${activeDragId ? 112 : isDockOpen ? 160 : 0}px)` }}
-        className={`fixed bottom-0 left-4 z-50 w-10 h-11 flex items-center justify-center rounded-t border border-b-0 text-sm transition-all duration-300 cursor-pointer focus:outline-none ${
+        className={`fixed bottom-0 left-4 z-50 w-10 h-11 flex items-center justify-center border border-b-0 text-sm transition-all duration-300 cursor-pointer focus:outline-none ${
           dockedWidgets.length > 0
             ? 'bg-[#d07018]/15 border-[#d07018] text-[#d07018] shadow-[0_0_10px_rgba(208,112,24,0.35)] animate-pulse'
             : 'bg-[#090e14]/90 border-[#1c3547] text-[#60809a]'
