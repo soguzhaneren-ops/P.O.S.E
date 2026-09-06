@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import * as math from 'mathjs'
+import { attachDragGhost } from '../utils/dragGhost'
 
 function CalculatorWidget() {
   const [equations, setEquations] = useState(() => {
@@ -22,6 +23,8 @@ function CalculatorWidget() {
   const [resolvedExtrema, setResolvedExtrema] = useState(null)
   const [editingIndex, setEditingIndex] = useState(null)
   const [editingValue, setEditingValue] = useState('')
+  const [draggedEqIndex, setDraggedEqIndex] = useState(null)
+  const [isExtremaDropActive, setIsExtremaDropActive] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('dashboardCalcEqs', JSON.stringify(equations))
@@ -520,14 +523,25 @@ function CalculatorWidget() {
                 e.preventDefault();
                 e.stopPropagation();
               }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsExtremaDropActive(true);
+              }}
+              onDragLeave={() => setIsExtremaDropActive(false)}
               onDrop={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setIsExtremaDropActive(false);
                 const eq = e.dataTransfer.getData("text/plain")
                 setExtremaEq(eq)
                 setResolvedExtrema(null)
               }}
-              className="border border-dashed border-cyan-500/30 bg-black/40 rounded p-3 text-center text-[9px] text-[#60809a] hover:border-cyan-400 hover:text-cyan-400 transition-all cursor-pointer"
+              className={`border border-dashed rounded p-3 text-center text-[9px] transition-all duration-150 cursor-pointer ${
+                isExtremaDropActive
+                  ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 scale-[1.03] shadow-[0_0_16px_rgba(0,210,255,0.25)]'
+                  : 'border-cyan-500/30 bg-black/40 text-[#60809a] hover:border-cyan-400 hover:text-cyan-400'
+              }`}
               title="DRAG AN ACTIVE FUNCTION & DROP HERE"
             >
               {extremaEq ? `TARGET // f(x) = ${extremaEq.toUpperCase()}` : '[ DROP ACTIVE FUNCTION HERE ]'}
@@ -626,8 +640,16 @@ function CalculatorWidget() {
                   onDragStart={(e) => {
                     e.stopPropagation();
                     e.dataTransfer.setData("text/plain", eq)
+                    setDraggedEqIndex(idx)
+                    attachDragGhost(e, { background: '#0f1c27' })
                   }}
-                  className="flex justify-between items-center bg-[#0c1821]/90 border border-[#1c3547]/50 px-2.5 py-1 rounded min-h-[26px] backdrop-blur-sm cursor-grab active:cursor-grabbing"
+                  onDragEnd={(e) => {
+                    e.stopPropagation();
+                    setDraggedEqIndex(null)
+                  }}
+                  className={`flex justify-between items-center bg-[#0c1821]/90 border px-2.5 py-1 rounded min-h-[26px] backdrop-blur-sm cursor-grab active:cursor-grabbing transition-[opacity,transform] duration-150 ${
+                    draggedEqIndex === idx ? 'opacity-30 scale-[0.96] border-[#1c3547]/50' : 'border-[#1c3547]/50'
+                  }`}
                   title="DRAG TO EXTREMA SENSOR"
                 >
                   {isEditing ? (

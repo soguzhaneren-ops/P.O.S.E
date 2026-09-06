@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { attachDragGhost } from '../utils/dragGhost'
 
 const DEFAULT_SECTION_ID = 'default'
 
@@ -31,6 +32,7 @@ function TodoWidget() {
   const [expandedTodos, setExpandedTodos] = useState([])
   const [subTaskInputs, setSubTaskInputs] = useState({})
   const [draggedTodoId, setDraggedTodoId] = useState(null)
+  const [dragOverTodoId, setDragOverTodoId] = useState(null)
   const [editingTodoId, setEditingTodoId] = useState(null)
   const [editingTodoValue, setEditingTodoValue] = useState('')
   const [editingSubTask, setEditingSubTask] = useState(null) // { todoId, subId } | null
@@ -47,6 +49,46 @@ function TodoWidget() {
   useEffect(() => {
     localStorage.setItem('dashboardTodoCollapsedSections', JSON.stringify(collapsedSectionIds))
   }, [collapsedSectionIds])
+
+  // Manual FLIP animation for task reordering: rather than letting a reordered list just
+  // snap into its new positions on re-render, this measures each task row's position before
+  // the DOM updates (via prevRectsRef, captured at the end of the previous run of this same
+  // effect) and compares it to where that row landed this render. Any row that moved gets an
+  // inverse transform applied instantly (no transition) and then animated back to zero on the
+  // next frame, so it visibly slides into place instead of teleporting. Runs on every `todos`
+  // change (not just drops), so adding/removing/completing a task also animates the rows
+  // that shift as a result.
+  const todoRowRefs = useRef({})
+  const prevTodoRectsRef = useRef({})
+  useLayoutEffect(() => {
+    const nextRects = {}
+    for (const id in todoRowRefs.current) {
+      const el = todoRowRefs.current[id]
+      if (el) nextRects[id] = el.getBoundingClientRect()
+    }
+    for (const id in nextRects) {
+      const prev = prevTodoRectsRef.current[id]
+      const next = nextRects[id]
+      if (!prev) continue
+      const deltaY = prev.top - next.top
+      if (Math.abs(deltaY) < 1) continue
+      const el = todoRowRefs.current[id]
+      if (!el) continue
+      el.style.transition = 'none'
+      el.style.transform = `translateY(${deltaY}px)`
+      // Forces the browser to flush layout/paint with the untransitioned offset applied
+      // before re-enabling the transition below — otherwise the two style writes can get
+      // batched into one frame and the row would just appear at rest with no visible slide.
+      // Deliberately not requestAnimationFrame here: rAF callbacks don't fire while the tab
+      // is backgrounded/throttled, which would leave the row stuck mid-offset indefinitely;
+      // reading a layout property forces the flush synchronously regardless of frame timing.
+      void el.offsetHeight
+      el.style.transition = 'transform 220ms cubic-bezier(0.2, 0, 0, 1)'
+      el.style.transform = ''
+      setTimeout(() => { el.style.transition = '' }, 240)
+    }
+    prevTodoRectsRef.current = nextRects
+  }, [todos])
 
   const handleAddSection = () => {
     const name = newSectionName.trim().toUpperCase()
@@ -155,11 +197,22 @@ function TodoWidget() {
     e.stopPropagation();
     setDraggedTodoId(id);
     e.dataTransfer.effectAllowed = 'move';
+    attachDragGhost(e, { background: '#132533' })
   }
 
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
+  }
+
+  const handleDragEnterTodo = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (id !== draggedTodoId) setDragOverTodoId(id);
+  }
+
+  const handleDragLeaveTodo = (id) => {
+    setDragOverTodoId(prev => (prev === id ? null : prev));
   }
 
   // Dropping onto another task reorders relative to it — and, if that task belongs to a
@@ -168,6 +221,7 @@ function TodoWidget() {
   const handleDrop = (e, targetId) => {
     e.preventDefault();
     e.stopPropagation();
+    setDragOverTodoId(null);
     if (draggedTodoId === null || draggedTodoId === targetId) return;
     setTodos(prev => {
       const copy = [...prev];
@@ -189,6 +243,7 @@ function TodoWidget() {
   const handleDropOnSection = (e, sectionId) => {
     e.preventDefault();
     e.stopPropagation();
+    setDragOverTodoId(null);
     if (draggedTodoId === null) return;
     setTodos(prev => {
       const draggedItem = prev.find(t => t.id === draggedTodoId)
@@ -348,17 +403,28 @@ function TodoWidget() {
                       return (
                         <div
                           key={todo.id}
+                          ref={(el) => {
+                            if (el) todoRowRefs.current[todo.id] = el
+                            else delete todoRowRefs.current[todo.id]
+                          }}
                           draggable={!isEditing}
                           onDragStart={(e) => handleDragStart(e, todo.id)}
                           onDragOver={handleDragOver}
+                          onDragEnter={(e) => handleDragEnterTodo(e, todo.id)}
+                          onDragLeave={() => handleDragLeaveTodo(todo.id)}
                           onDrop={(e) => handleDrop(e, todo.id)}
                           onDragEnd={(e) => {
                             e.stopPropagation();
                             setDraggedTodoId(null);
+                            setDragOverTodoId(null);
                           }}
-                          className={`border-b border-[#1c3547]/10 pb-2 last:border-0 last:pb-0 transition-opacity duration-150 ${
-                            draggedTodoId === todo.id ? 'opacity-40' : ''
-                          }`}
+                          className={`border-b pb-2 last:border-0 last:pb-0 transition-[opacity,transform,border-color,box-shadow] duration-150 ${
+                            draggedTodoId === todo.id
+                              ? 'opacity-30 scale-[0.97] border-[#1c3547]/10'
+                              : dragOverTodoId === todo.id
+                                ? 'border-t-2 border-t-[#00d2ff] -mt-[1px] shadow-[0_-6px_10px_-8px_rgba(0,210,255,0.7)] border-[#1c3547]/10'
+                                : 'border-[#1c3547]/10'
+                          } ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'}`}
                         >
                           <div className="flex justify-between items-center text-sm">
                             <div className="flex items-center gap-2 flex-grow overflow-hidden mr-2">

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
 import { createPortal } from 'react-dom'
+import { attachDragGhost } from '../utils/dragGhost'
 
 const TEXT_COLORS = [
   { key: 'cyan', label: 'CYAN', hex: '#22e3ff' },
@@ -602,6 +603,7 @@ function MainWidget() {
     }
     setDraggedIds(ids)
     e.dataTransfer.effectAllowed = 'move'
+    attachDragGhost(e, { background: '#132533' })
   }
 
   const handleDragOverIcon = (e, node) => {
@@ -914,10 +916,10 @@ function MainWidget() {
                       }
                       setContextMenu({ ids, x: e.clientX, y: e.clientY, confirmingDelete: false })
                     }}
-                    className={`flex flex-col items-center gap-1.5 w-24 p-2.5 rounded cursor-pointer select-none transition-all ${
-                      draggedIds.includes(node.id) ? 'opacity-40' : ''
+                    className={`flex flex-col items-center gap-1.5 w-24 p-2.5 rounded cursor-pointer active:cursor-grabbing select-none transition-[opacity,transform,background-color,box-shadow] duration-150 ${
+                      draggedIds.includes(node.id) ? 'opacity-30 scale-90' : ''
                     } ${
-                      dragOverFolderId === node.id ? 'bg-cyan-500/10 ring-1 ring-cyan-400' : ''
+                      dragOverFolderId === node.id ? 'bg-cyan-500/10 ring-1 ring-cyan-400 scale-105 shadow-[0_0_14px_rgba(0,210,255,0.3)]' : ''
                     } ${
                       selectedIds.includes(node.id) ? 'bg-[#132533] ring-1 ring-cyan-500/40' : 'hover:bg-[#132533]/50'
                     }`}
